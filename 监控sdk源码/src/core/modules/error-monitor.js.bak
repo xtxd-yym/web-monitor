@@ -1,0 +1,333 @@
+/**
+ * WebMonitor 错误监控模块
+ * 包含错误捕获和上报的相关功能
+ */
+
+/**
+ * 生成错误指纹
+ * 用于错误去重识别
+ * @param {Object} error - 错误对象
+ * @returns {string} 错误指纹
+ */
+function generateErrorFingerprint(error) {
+  const key = [
+    error.type || 'unknown',
+    error.message || '',
+    error.filename || '',
+    error.lineno || 0,
+    getStackSignature(error.stack)
+  ].filter(Boolean).join('|');
+
+  return simpleHash(key);
+}
+
+/**
+ * 提取堆栈特征
+ * 移除动态变化的行号列号，保留核心调用链
+ * @param {string} stack - 错误堆栈
+ * @returns {string} 堆栈特征签名
+ */
+function getStackSignature(stack) {
+  if (!stack) return '';
+  const lines = stack.split('\n').slice(0, 3); // 只取前3行
+  return lines.map(line =>
+    line.replace(/:\d+:\d+/g, '').trim() // 移除 :行号:列号
+  ).join('|');
+}
+
+/**
+ * 简单hash算法
+ * 避免引入crypto库，保持SDK体积小
+ * @param {string} str - 待hash字符串
+ * @returns {string} hash值（36进制）
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * 限流器类
+ * 使用令牌桶算法实现客户端限流
+ */
+class RateLimiter {
+  constructor(maxPerMinute = 100) {
+    this.maxPerMinute = maxPerMinute;
+    this.tokens = maxPerMinute;
+    this.lastRefill = Date.now();
+  }
+
+  /**
+   * 尝试获取令牌
+   * @returns {boolean} 是否成功获取
+   */
+  tryAcquire() {
+    this.refill();
+
+    if (this.tokens > 0) {
+      this.tokens--;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 补充令牌
+   * 每分钟补充一次
+   */
+  refill() {
+    const now = Date.now();
+    const elapsed = now - this.lastRefill;
+
+    // 每分钟重置tokens
+    if (elapsed > 60000) {
+      this.tokens = this.maxPerMinute;
+      this.lastRefill = now;
+    }
+  }
+}
+
+/**
+ * 设置错误捕获
+ * @param {Object} monitor - WebMonitor实例
+ */
+export function setupErrorCapture(monitor) {
+  // 初始化错误去重缓存
+  monitor.errorDeduplication = {};
+
+  // 初始化限流器
+  monitor.rateLimiter = new RateLimiter(
+    monitor.options.maxErrorsPerMinute || 100
+  );
+
+  // 定期清理过期的去重记录（每10分钟）
+  monitor.deduplicationCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    const expireTime = 10 * 60 * 1000; // 10分钟过期
+
+    Object.keys(monitor.errorDeduplication).forEach(fingerprint => {
+      const record = monitor.errorDeduplication[fingerprint];
+      if (now - record.lastTime > expireTime) {
+        delete monitor.errorDeduplication[fingerprint];
+      }
+    });
+
+    // 可选：输出清理日志（调试用）
+    // console.log('[Monitor] Cleaned up deduplication cache');
+  }, 10 * 60 * 1000);
+
+  monitor.errorHandlers = [];
+
+  const errorHandler = (event) => {
+    // 检查是否是资源加载错误，如果是则不处理
+    if (event.target && (event.target.src || event.target.href)) {
+      return;
+    }
+
+    monitor.captureError({
+      type: 'javascript',
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      stack: event.error?.stack,
+      timestamp: Date.now(),
+      url: window.location.href,
+      userAgent: navigator.userAgent
+    });
+  };
+
+  const unhandledRejectionHandler = (event) => {
+    monitor.captureError({
+      type: 'promise',
+      message: event.reason?.message || event.reason,
+      stack: event.reason?.stack,
+      timestamp: Date.now(),
+      url: window.location.href,
+      userAgent: navigator.userAgent
+    });
+  };
+
+  const resourceErrorHandler = (event) => {
+    if (event.target && (event.target.src || event.target.href)) {
+      // 检查是否在忽略列表中
+      const resourceUrl = event.target.src || event.target.href;
+      if (monitor.options.ignoreResources.some(ignore =>
+        typeof ignore === 'string' ? resourceUrl.includes(ignore) : ignore.test(resourceUrl)
+      )) {
+        return;
+      }
+
+      monitor.captureError({
+        type: 'resource',
+        message: `Resource load failed: ${resourceUrl}`,
+        resource: resourceUrl,
+        tagName: event.target.tagName,
+        timestamp: Date.now(),
+        url: window.location.href
+      });
+    }
+  };
+
+  window.addEventListener('error', errorHandler, true);
+  window.addEventListener('unhandledrejection', unhandledRejectionHandler);
+  window.addEventListener('error', resourceErrorHandler, true);
+
+  // 保存事件处理函数引用用于清理
+  monitor.errorHandlers = [errorHandler, unhandledRejectionHandler, resourceErrorHandler];
+}
+
+/**
+ * 捕获错误
+ * @param {Object} monitor - WebMonitor实例
+ * @param {Object} error - 错误对象
+ */
+export function captureError(monitor, error) {
+  // 检查是否在忽略列表中
+  if (monitor.options.ignoreErrors.some(ignore =>
+    typeof ignore === 'string' ? error.message.includes(ignore) : ignore.test(error.message)
+  )) {
+    return;
+  }
+
+  if (monitor.options.onCaptureError) {
+    monitor.options.onCaptureError(error);
+  }
+
+  // 只有指定类型的错误才加入累积队列
+  const errorTypes = ['javascript', 'promise', 'resource', 'network-xhr', 'network-fetch', 'network-error', 'white-screen'];
+  if (errorTypes.includes(error.type) && monitor.errorQueue.length < monitor.options.maxErrors) {
+    monitor.errorQueue.push({
+      ...error,
+      project: monitor.options.project,
+      env: monitor.options.env,
+      userId: monitor.getUserId()
+    });
+
+    // 更新该错误类型的计数器
+    if (!monitor.errorCounters[error.type]) {
+      monitor.errorCounters[error.type] = 0;
+    }
+    monitor.errorCounters[error.type]++;
+
+    // 检查该错误类型是否达到自动上报阈值
+    const threshold = monitor.options.autoReportThresholds[error.type] || monitor.options.autoReportThreshold;
+    if (monitor.errorCounters[error.type] >= threshold) {
+      // 只上报当前错误类型的错误
+      monitor.reportErrors(error.type);
+      // 重置该错误类型的计数器
+      monitor.errorCounters[error.type] = 0;
+    }
+  }
+}
+
+/**
+ * 根据错误类型获取告警详情
+ * @param {string} errorType - 错误类型
+ * @returns {string} 告警详情
+ */
+function getAlarmDetailByErrorType(errorType) {
+  const errorTypeMap = {
+    'js': 'JavaScript错误',
+    'promise': 'Promise未处理的拒绝',
+    'resource': '资源加载失败',
+    'ajax': '接口请求错误',
+    'fetch': '接口请求错误',
+    'white-screen': '页面白屏',
+    'performance': '性能异常',
+    'network': '网络请求异常',
+    'custom': '自定义错误'
+  };
+
+  return errorTypeMap[errorType] || '未知错误';
+}
+
+/**
+ * 上报错误
+ * @param {Object} monitor - WebMonitor实例
+ * @param {string} errorType - 错误类型
+ */
+export async function reportErrors(monitor, errorType) {
+  if (monitor.errorQueue.length === 0 || monitor.isReporting) return;
+
+  monitor.isReporting = true;
+
+  // 如果传入了errorType参数，则只上报该类型的错误
+  let errorsToReport = [];
+  let remainingErrors = [];
+
+  if (errorType) {
+    // 分离指定类型的错误和其它类型的错误
+    monitor.errorQueue.forEach(error => {
+      if (error.type === errorType) {
+        errorsToReport.push(error);
+      } else {
+        remainingErrors.push(error);
+      }
+    });
+  } else {
+    // 如果没有指定类型，则上报所有错误（保持向后兼容）
+    errorsToReport = [...monitor.errorQueue];
+    monitor.errorQueue = [];
+  }
+
+  // 如果没有需要上报的错误，则直接返回
+  if (errorsToReport.length === 0) {
+    monitor.isReporting = false;
+    return;
+  }
+
+  try {
+    // 构建新的上报数据格式
+    const reportData = {
+      appkey: monitor.options.apiParams.appKey || '',
+      list: errorsToReport.map(error => ({
+        customer_name: monitor.options.apiParams.customer_name || '',
+        alarm_detail: getAlarmDetailByErrorType(error.type),
+        service_name: monitor.options.apiParams.service_name || '',
+        alarm_time: error.timestamp,
+        output: error.message || JSON.stringify(error.data || {}),
+        expand: error.type === 'performance' ? error.data || {} : {},
+        index_id: error.type || 'unknown',
+        url: error.url || window.location.href,
+        mark: error.type === 'network' ? (error.data?.url || '') : ''
+      }))
+    };
+
+    // 使用外部传入的monitorReport函数进行上报
+    let response;
+    if (typeof monitor.options.monitorReport === 'function') {
+      response = await monitor.options.monitorReport(reportData);
+    } else {
+      console.warn('monitorReport function is not provided, skipping report');
+      response = { ok: false };
+    }
+
+    if (monitor.options.onReport) {
+      monitor.options.onReport(errorsToReport, response);
+    }
+
+    // 如果是按类型上报，则只移除已上报的错误
+    if (errorType) {
+      monitor.errorQueue = remainingErrors;
+    } else {
+      monitor.errorQueue = [];
+    }
+  } catch (error) {
+    // 上报失败，如果是按类型上报，则将失败的错误重新放回队列
+    if (errorType) {
+      monitor.errorQueue = [...remainingErrors, ...errorsToReport];
+    } else {
+      // 全部上报失败，重新加入队列
+      monitor.errorQueue.unshift(...errorsToReport);
+    }
+  } finally {
+    monitor.isReporting = false;
+  }
+}

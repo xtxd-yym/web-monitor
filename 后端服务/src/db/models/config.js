@@ -1,0 +1,170 @@
+/**
+ * 配置数据模型
+ * 负责监控配置的 CRUD 操作
+ * 表名: monitor_configs (符合公司规范)
+ */
+
+class ConfigModel {
+    constructor(db) {
+        this.db = db;
+    }
+
+    /**
+     * 插入或更新配置
+     * 按 appkey + customer_name 唯一定位
+     */
+    async upsert(configData) {
+        const { appkey, customer_name = '', project = '', env = 'production', config } = configData;
+        const now = Date.now();
+
+        try {
+            // 检查是否已存在 (按 appkey + customer_name)
+            const existing = await this.db.getAsync(`
+        SELECT id FROM monitor_configs 
+        WHERE appkey = ? AND customer_name = ?
+      `, [appkey, customer_name]);
+
+            if (existing) {
+                // 更新配置
+                await this.db.runAsync(`
+          UPDATE monitor_configs 
+          SET config_json = ?, project = ?, env = ?, updated_at = ?
+          WHERE id = ?
+        `, [JSON.stringify(config), project, env, now, existing.id]);
+
+                return { id: existing.id, updated: true };
+            } else {
+                // 插入新配置
+                const result = await this.db.runAsync(`
+          INSERT INTO monitor_configs (appkey, customer_name, project, env, config_json, updated_at, updated_by)
+          VALUES (?, ?, ?, ?, ?, ?, '')
+        `, [appkey, customer_name, project, env, JSON.stringify(config), now]);
+
+                return { id: result.lastID, updated: false };
+            }
+        } catch (error) {
+            console.error('插入/更新配置失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 查询配置 (按 appkey + customer_name)
+     */
+    async findOne(appkey, customer_name = '') {
+        try {
+            const result = await this.db.getAsync(`
+        SELECT * FROM monitor_configs 
+        WHERE appkey = ? AND customer_name = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [appkey, customer_name]);
+
+            if (result) {
+                result.config = result.config_json ? JSON.parse(result.config_json) : {};
+            }
+
+            return result;
+        } catch (error) {
+            console.error('查询配置失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 查询所有配置
+     */
+    async findAll(params = {}) {
+        const { appkey, customer_name, project, env } = params;
+
+        try {
+            let whereConditions = [];
+            let queryParams = [];
+
+            if (appkey) {
+                whereConditions.push('appkey LIKE ?');
+                queryParams.push(`%${appkey}%`);
+            }
+            if (customer_name) {
+                whereConditions.push('customer_name LIKE ?');
+                queryParams.push(`%${customer_name}%`);
+            }
+            if (project) {
+                whereConditions.push('project = ?');
+                queryParams.push(project);
+            }
+            if (env) {
+                whereConditions.push('env = ?');
+                queryParams.push(env);
+            }
+
+            const whereClause = whereConditions.length > 0
+                ? 'WHERE ' + whereConditions.join(' AND ')
+                : '';
+
+            const results = await this.db.allAsync(`
+        SELECT * FROM monitor_configs ${whereClause} ORDER BY updated_at DESC
+      `, queryParams);
+
+            // 解析 JSON 配置
+            results.forEach(row => {
+                row.config = row.config_json ? JSON.parse(row.config_json) : {};
+            });
+
+            return results;
+        } catch (error) {
+            console.error('查询所有配置失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 删除配置
+     */
+    async delete(id) {
+        try {
+            const result = await this.db.runAsync('DELETE FROM monitor_configs WHERE id = ?', [id]);
+            return result.changes > 0;
+        } catch (error) {
+            console.error('删除配置失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 删除配置 (按 appkey + customer_name)
+     */
+    async deleteByKeys(appkey, customer_name = '') {
+        try {
+            const result = await this.db.runAsync(
+                'DELETE FROM monitor_configs WHERE appkey = ? AND customer_name = ?',
+                [appkey, customer_name]
+            );
+            return result.changes > 0;
+        } catch (error) {
+            console.error('删除配置失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 禁用配置 (由于新表没有 is_active 字段，直接返回 true 表示成功)
+     */
+    async disable(id) {
+        // 新表结构没有 is_active 字段，此方法暂时不做实际操作
+        // 如果需要此功能，需要在数据库表中添加相应字段
+        console.warn(`[ConfigModel] disable(${id}) called but is_active field not in schema`);
+        return true;
+    }
+
+    /**
+     * 启用配置 (由于新表没有 is_active 字段，直接返回 true 表示成功)
+     */
+    async enable(id) {
+        // 新表结构没有 is_active 字段，此方法暂时不做实际操作
+        console.warn(`[ConfigModel] enable(${id}) called but is_active field not in schema`);
+        return true;
+    }
+}
+
+module.exports = ConfigModel;

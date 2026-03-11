@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # Node.js 后端服务
+  monitor-backend:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      # 数据库连接配置 (默认连接下方的 mysql-db 容器)
+      - DB_TYPE=mysql
+      - DB_HOST=mysql-db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=monitor_system
+    depends_on:
+      - mysql-db
+    volumes:
+      # 挂载源码，支持热重载 (如果不想每次改代码都重启容器，可以在本地用 npm run dev，只用 docker 跑 mysql)
+      - ./:/app
+      - /app/node_modules
+
+  # MySQL 数据库服务 (本地开发用)
+  mysql-db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: monitor_system
+    ports:
+      - "3306:3306" # 暴露端口，方便本地 DBeaver 连接查看
+    volumes:
+      # 数据持久化，防止重启丢失
+      - ./mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password

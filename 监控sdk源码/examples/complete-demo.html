@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>监控系统完整演示</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px;
+        }
+        .demo-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .demo-section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+        .btn-info {
+            background: #3498db;
+            color: white;
+        }
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.8;
+            transform: translateY(-2px);
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+        }
+        .error-log {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .feature-card {
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Web监控系统演示</h1>
+            <p>完整的错误监控、性能追踪和白屏检测演示</p>
+        </div>
+
+        <div class="content">
+            <!-- 监控状态 -->
+            <div class="demo-section">
+                <h3>📊 监控状态</h3>
+                <div class="status">
+                    <strong>监控系统状态:</strong> 
+                    <span id="monitorStatus" style="color: green; font-weight: bold;">运行中</span>
+                    <br>
+                    <strong>已捕获错误:</strong> <span id="errorCount">0</span>
+                    <br>
+                    <strong>用户ID:</strong> <span id="userId">加载中...</span>
+                </div>
+            </div>
+
+            <!-- 功能演示 -->
+            <div class="demo-section">
+                <h3>🎯 错误类型演示</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">⚠️</div>
+                        <h4>JavaScript错误</h4>
+                        <button class="btn btn-danger" onclick="demoJSError()">触发JS错误</button>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <h4>Promise错误</h4>
+                        <button class="btn btn-warning" onclick="demoPromiseError()">触发Promise错误</button>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📁</div>
+                        <h4>资源加载错误</h4>
+                        <button class="btn btn-info" onclick="demoResourceError()">加载失败资源</button>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🪟</div>
+                        <h4>白屏检测</h4>
+                        <button class="btn btn-success" onclick="demoWhiteScreen()">模拟白屏</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 性能监控 -->
+            <div class="demo-section">
+                <h3>⚡ 性能监控演示</h3>
+                <button class="btn btn-info" onclick="showPerformance()">查看性能数据</button>
+                <button class="btn btn-success" onclick="heavyComputation()">执行重计算</button>
+                <div id="performanceData" class="error-log" style="display: none; margin-top: 10px;"></div>
+            </div>
+
+            <!-- 实时日志 -->
+            <div class="demo-section">
+                <h3>📋 实时错误日志</h3>
+                <div id="errorLog" class="error-log">
+                    等待错误发生...
+                </div>
+                <button class="btn" onclick="clearLogs()" style="background: #95a5a6; color: white;">清空日志</button>
+            </div>
+
+            <!-- 网络请求监控 -->
+            <div class="demo-section">
+                <h3>🌐 网络请求监控</h3>
+                <button class="btn btn-info" onclick="demoXHRRequest()">发送XHR请求</button>
+                <button class="btn btn-info" onclick="demoFetchRequest()">发送Fetch请求</button>
+                <button class="btn btn-warning" onclick="demoFailedRequest()">发送失败请求</button>
+            </div>
+
+            <!-- 用户行为 -->
+            <div class="demo-section">
+                <h3>👤 用户行为追踪</h3>
+                <button class="btn" onclick="trackCustomEvent()">自定义事件</button>
+                <button class="btn" onclick="trackUserAction()">用户操作</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 监控系统 -->
+    <script src="../dist/monitor.min.js"></script>
+    <!-- 使用动态配置的监控系统 -->
+    <script>
+    // 错误计数器
+    let errorCount = 0;
+    
+    // 更新错误计数
+    function updateErrorCount() {
+        errorCount++;
+        document.getElementById('errorCount').textContent = errorCount;
+    }
+    
+    // 更新错误日志显示
+    function updateErrorLog(error) {
+        const errorLog = document.getElementById('errorLog');
+        const errorEntry = document.createElement('div');
+        errorEntry.innerHTML = `
+            <strong>[${new Date(error.timestamp).toLocaleTimeString()}] ${error.type}:</strong><br>
+            ${error.message || JSON.stringify(error)}
+            <hr>
+        `;
+        errorLog.appendChild(errorEntry);
+        
+        // 保持滚动到底部
+        errorLog.scrollTop = errorLog.scrollHeight;
+    }
+    
+    // 重型计算函数
+    function heavyComputation() {
+        const startTime = Date.now();
+        let result = 0;
+        
+        // 执行一些计算密集型任务
+        for (let i = 0; i < 1000000; i++) {
+            result += Math.sqrt(i) * Math.random();
+        }
+        
+        const duration = Date.now() - startTime;
+        alert(`重计算完成，耗时: ${duration}ms`);
+    }
+    
+    // 显示性能数据
+    function showPerformance() {
+        const performanceData = monitor.getPerformanceData();
+        const performanceDiv = document.getElementById('performanceData');
+        
+        if (performanceData) {
+            performanceDiv.innerHTML = `
+              <strong>性能数据:</strong><br>
+              DNS查询: ${performanceData.dns}ms<br>
+              TCP连接: ${performanceData.tcp}ms<br>
+              TTFB: ${performanceData.ttfb}ms<br>
+              响应时间: ${performanceData.response}ms<br>
+              DOM准备完成: ${performanceData.domReady}ms<br>
+              页面加载完成: ${performanceData.loadComplete}ms
+            `;
+            performanceDiv.style.display = 'block';
+        } else {
+            performanceDiv.innerHTML = '性能数据尚未收集完成';
+            performanceDiv.style.display = 'block';
+        }
+    }
+    
+    // 清空日志
+    function clearLogs() {
+        document.getElementById('errorLog').innerHTML = '等待错误发生...';
+        errorCount = 0;
+        document.getElementById('errorCount').textContent = '0';
+    }
+    
+    // 演示函数
+    function demoJSError() {
+        throw new Error('这是一个人为触发的JavaScript错误');
+    }
+    
+    function demoPromiseError() {
+        Promise.reject(new Error('这是一个人为触发的Promise错误'));
+    }
+    
+    function demoResourceError() {
+        const img = new Image();
+        img.src = 'non-existent-image.png';
+        document.body.appendChild(img);
+        setTimeout(() => {
+            document.body.removeChild(img);
+        }, 1000);
+    }
+    
+    function demoWhiteScreen() {
+        // 创建一个空白页面来模拟白屏
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.background = 'white';
+        overlay.style.zIndex = '9999';
+        overlay.id = 'whiteScreenOverlay';
+        overlay.className = 'white-screen-overlay';  // 添加class
+        document.body.appendChild(overlay);
+        
+        // 延长显示时间，确保能被检测到
+        setTimeout(() => {
+            document.body.removeChild(overlay);
+            console.log('白屏覆盖层已移除'); // 添加调试日志
+        }, 4000); // 从3秒改为4秒
+    }
+    
+    function demoXHRRequest() {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', 'https://jsonplaceholder.typicode.com/posts/1');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                console.log('XHR请求完成');
+            }
+        };
+        xhr.send();
+    }
+    
+    function demoFetchRequest() {
+        fetch('https://jsonplaceholder.typicode.com/posts/1')
+            .then(response => response.json())
+            .then(data => console.log('Fetch请求完成', data));
+    }
+    
+    function demoFailedRequest() {
+        fetch('https://non-existent-domain-for-demo.com/api')
+            .catch(error => console.log('失败请求已捕获', error));
+    }
+    
+    function trackCustomEvent() {
+        // 这个事件会被用户行为追踪捕获
+        console.log('自定义事件已触发');
+        alert('自定义事件已触发，检查用户行为日志');
+    }
+    
+    function trackUserAction() {
+        // 通过点击按钮来触发用户行为追踪
+        alert('点击事件已记录');
+    }
+    
+    // 使用动态配置的监控系统
+    let monitor;
+    
+    // 动态初始化监控系统
+    async function initMonitor() {
+      try {
+        // 使用动态配置初始化
+        monitor = new DynamicWebMonitor({
+          project: 'demo-web-app',
+          env: 'development',
+          configUrl: 'http://localhost:3001/api/monitor/config',
+          monitorReport: async function(params) {
+            // 自定义上报函数实现
+            try {
+              const response = await fetch('http://localhost:3001/api/report', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(params)
+              });
+              return response;
+            } catch (error) {
+              console.error('上报失败:', error);
+              return { ok: false };
+            }
+          },
+          reportInterval: 3000,
+          maxErrors: 50,
+          cache: true, // 启用配置缓存
+          
+          // 新增API参数配置
+          apiParams: {
+            appKey: '123',
+            customer_name: '演示客户',
+            service_name: 'demo-service'  
+          }
+          
+          // 自定义错误捕获回调
+          onCaptureError: function(error) {
+            updateErrorLog(error);
+            updateErrorCount();
+          },
+          
+          // 自定义性能数据回调
+          onPerformanceData: function(data) {
+            console.log('性能数据:', data);
+            // 可以在这里处理性能数据，例如显示在页面上
+          },
+          
+          // 自定义上报回调
+          onReport: function(errors, response) {
+            console.log(`上报了 ${errors.length} 条数据`);
+          }
+        });
+        
+        // 初始化监控系统
+        const initialized = await monitor.init();
+        
+        if (initialized) {
+          console.log('监控系统初始化成功');
+          document.getElementById('monitorStatus').textContent = '运行中';
+          document.getElementById('monitorStatus').style.color = 'green';
+        } else {
+          console.log('监控系统被动态配置禁用');
+          document.getElementById('monitorStatus').textContent = '已禁用';
+          document.getElementById('monitorStatus').style.color = 'orange';
+        }
+        
+        // 更新UI显示用户ID
+        document.getElementById('userId').textContent = monitor.getUserId();
+        
+      } catch (error) {
+        console.error('监控系统初始化失败:', error);
+        document.getElementById('monitorStatus').textContent = '初始化失败';
+        document.getElementById('monitorStatus').style.color = 'red';
+        
+        // 降级到基础监控
+        monitor = new WebMonitor({
+          project: 'demo-web-app',
+          env: 'development',
+          monitorReport: async function(params) {
+            // 自定义上报函数实现
+            try {
+              const response = await fetch('http://localhost:3000/api/report', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(params)
+              });
+              return response;
+            } catch (error) {
+              console.error('上报失败:', error);
+              return { ok: false };
+            }
+          },
+          reportInterval: 3000,
+          maxErrors: 50,
+          enableNetworkMonitoring: true,
+          enableUserTracking: true,
+          
+          onCaptureError: function(error) {
+            updateErrorLog(error);
+            updateErrorCount();
+          }
+        });
+        
+        await monitor.init();
+        document.getElementById('userId').textContent = monitor.getUserId();
+      }
+    }
+    
+    // 初始化监控系统
+    initMonitor();
+    </script>
+</body>
+</html>
