@@ -4,6 +4,7 @@
  */
 
 import { sanitizeError } from '../../utils/sanitizer.js';
+import { isLocalEnv } from '../../utils/env.js';
 
 /**
  * 生成错误指纹
@@ -476,6 +477,12 @@ function buildBreadcrumbs(userActions, limit = 30) {
   });
 }
 export async function reportErrors(monitor, errorType) {
+  if (isLocalEnv(monitor)) {
+    console.log('[Monitor] 本地开发环境检测，跳过错误网络上报');
+    monitor.errorQueue = [];
+    return;
+  }
+
   if (monitor.errorQueue.length === 0 || monitor.isReporting) return;
 
   monitor.isReporting = true;

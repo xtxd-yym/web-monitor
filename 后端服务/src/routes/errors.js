@@ -10,7 +10,7 @@ const router = express.Router();
 const configModel = require('../db/models/config');
 // const sourcemapService = require('../services/sourcemap'); // Removed
 
-module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, breadcrumbModel) => {
+module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, breadcrumbModel, appkeyModel) => {
     /**
      * POST /api/errors/report
      * 错误上报接口（新接口，与 /wczj/alarm/report 功能相同）
@@ -18,6 +18,33 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
     router.post('/report', async (req, res) => {
         try {
             const body = req.body;
+
+            // --- AppKey 强校验拦截器 ---
+            let appkeysToVerify = new Set();
+            if (body.appkey) appkeysToVerify.add(body.appkey);
+            if (body.list && Array.isArray(body.list)) {
+                body.list.forEach(item => {
+                    if (item.appkey) appkeysToVerify.add(item.appkey);
+                });
+            }
+
+            if (appkeysToVerify.size === 0) {
+                return res.status(403).json({ success: false, msg: 'Forbidden: Missing AppKey' });
+            }
+
+            if (appkeyModel) {
+                for (let ak of appkeysToVerify) {
+                    const record = await appkeyModel.findByAppkey(ak);
+                    if (!record || record.status !== 1) {
+                        return res.status(403).json({
+                            success: false,
+                            msg: `Forbidden: Invalid or disabled AppKey [${ak}]`
+                        });
+                    }
+                }
+            }
+            // ---------------------------
+
             let errorList = [];
 
             // 适配 SDK 的 list 格式

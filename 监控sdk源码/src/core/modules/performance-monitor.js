@@ -3,6 +3,8 @@
  * 包含性能数据收集和上报的相关功能
  */
 
+import { isLocalEnv } from '../../utils/env.js';
+
 /**
  * 设置性能监控
  * @param {Object} monitor - WebMonitor实例
@@ -46,6 +48,11 @@ export function setupPerformanceCapture(monitor) {
  * @param {Object} monitor - WebMonitor实例
  */
 export async function reportPerformanceData(monitor) {
+  if (isLocalEnv(monitor)) {
+    console.log('[Monitor] 本地开发环境检测，跳过性能数据上报');
+    return;
+  }
+  
   if (!monitor.performanceData) return;
   
   // 将性能数据包装成与错误数据相同的格式

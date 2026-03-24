@@ -128,3 +128,20 @@ CREATE TABLE IF NOT EXISTS alarm_records (
 
 CREATE INDEX IF NOT EXISTS idx_alarm_records_created_at ON alarm_records(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alarm_records_status ON alarm_records(alarm_status);
+
+-- ============================================
+-- 7. appkey_registry 表 - AppKey 注册中心
+-- ============================================
+CREATE TABLE IF NOT EXISTS appkey_registry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  appkey TEXT NOT NULL DEFAULT '' UNIQUE,
+  customer_name TEXT NOT NULL DEFAULT '',
+  service_name TEXT NOT NULL DEFAULT '',
+  app_owner TEXT NOT NULL DEFAULT '',
+  app_status INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_registry_appkey ON appkey_registry(appkey);
+CREATE INDEX IF NOT EXISTS idx_registry_customer ON appkey_registry(customer_name);

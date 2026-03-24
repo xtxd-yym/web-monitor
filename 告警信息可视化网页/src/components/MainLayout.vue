@@ -43,6 +43,14 @@
           <el-icon><Setting /></el-icon>
           <span>配置管理</span>
         </el-menu-item>
+        <el-menu-item index="/console/sourcemap">
+          <el-icon><Files /></el-icon>
+          <span>SourceMap管理</span>
+        </el-menu-item>
+        <el-menu-item index="/console/appkey">
+          <el-icon><Key /></el-icon>
+          <span>AppKey管理</span>
+        </el-menu-item>
         <el-menu-item index="/">
            <el-icon><HomeFilled /></el-icon>
            <span>返回首页</span>

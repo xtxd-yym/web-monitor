@@ -13,6 +13,8 @@ const IndexMonitor = () => import('../views/IndexMonitor.vue');
 const InstanceMonitor = () => import('../views/InstanceMonitor.vue');
 const DataManagement = () => import('../views/DataManagement.vue');
 const ConfigManagement = () => import('../views/ConfigManagement.vue');
+const SourceMapManager = () => import('../views/SourceMapManager.vue');
+const AppkeyManager = () => import('../views/AppkeyManager.vue');
 
 const routes = [
     {
@@ -74,8 +76,33 @@ const routes = [
                 name: 'ConfigManagement',
                 component: ConfigManagement,
                 meta: { title: 'Config管理', icon: 'Setting', requiresAuth: true }
+            },
+            {
+                path: 'sourcemap',
+                name: 'SourceMapManager',
+                component: SourceMapManager,
+                meta: { title: 'SourceMap管理', icon: 'Files', requiresAuth: true }
+            },
+            {
+                path: 'appkey',
+                name: 'AppkeyManager',
+                component: AppkeyManager,
+                meta: { title: 'AppKey接入管理', icon: 'Key', requiresAuth: true }
             }
         ]
+    },
+    {
+        // 捕获所有未匹配的错误路由
+        path: '/:pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => Promise.resolve({
+            render() {
+                // 最简兜底视图，直接破坏纯白屏
+                return Vue.h('div', { style: 'color: red; padding: 20px;' },
+                    `[404 Route Unmatched] Path: ${window.location.pathname}`
+                )
+            }
+        })
     }
 ];
 

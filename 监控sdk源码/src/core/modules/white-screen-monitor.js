@@ -3,6 +3,8 @@
  * 使用采样点检测法，生产级实现（无hardcode判断）
  */
 
+import { isLocalEnv } from '../../utils/env.js';
+
 /**
  * 采样点检测法：在页面关键位置采样，检测是否有实际内容
  */
@@ -236,6 +238,11 @@ export function setupWhiteScreenDetection(monitor) {
  * @param {Object} error - 错误对象
  */
 export async function reportWhiteScreenError(monitor, error) {
+  if (isLocalEnv(monitor)) {
+    console.log('[Monitor] 本地开发环境检测，跳过白屏错误网络上报');
+    return;
+  }
+
   // 添加项目信息
   const errorWithProjectInfo = {
     ...error,

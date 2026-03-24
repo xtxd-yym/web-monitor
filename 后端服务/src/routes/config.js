@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 
-module.exports = (configModel) => {
+module.exports = (configModel, appkeyModel) => {
     /**
      * GET /api/config
      * 获取监控配置
@@ -19,6 +19,22 @@ module.exports = (configModel) => {
 
             // 方式1: appkey + customer_name
             if (appkey) {
+                // --- AppKey 强校验拦截器（前置关闭 SDK）---
+                if (appkeyModel) {
+                    const appkeyRecord = await appkeyModel.findByAppkey(appkey);
+                    if (!appkeyRecord || appkeyRecord.status !== 1) {
+                        return res.json({
+                            enabled: false,
+                            appkeyInvalid: true,
+                            emergency: {
+                                closeMonitor: true,
+                                reason: 'AppKey未注册或已被禁用'
+                            }
+                        });
+                    }
+                }
+                // ----------------------------------------
+                
                 const config = await configModel.findOne(appkey, customer_name || '');
                 const finalConfig = getDefaultConfig();
 

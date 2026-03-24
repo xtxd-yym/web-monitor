@@ -47,6 +47,16 @@ module.exports = {
         dir: process.env.SOURCEMAP_DIR || './sourcemaps'
     },
 
+    // OSS 配置（S3 兼容协议，用于 SourceMap 文件持久化存储）
+    // 部署时在容器平台「配置管理」中设置以下环境变量：
+    //   OSS_ENDPOINT, OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET
+    oss: {
+        endpoint:  process.env.OSS_ENDPOINT  || '',
+        accessKey: process.env.OSS_ACCESS_KEY || '',
+        secretKey: process.env.OSS_SECRET_KEY || '',
+        bucket:    process.env.OSS_BUCKET     || 'b2b-web-monitor.sourcemap',
+    },
+
     // CORS 配置
     cors: {
         origin: process.env.CORS_ORIGIN || '*',

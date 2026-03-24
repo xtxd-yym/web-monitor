@@ -18,9 +18,11 @@ const BreadcrumbModel = require('./db/models/breadcrumb');
 const IndexModel = require('./db/models/index');
 const InstanceModel = require('./db/models/instance');
 const AlarmModel = require('./db/models/alarm');
+const AppkeyModel = require('./db/models/appkey');
 
 // 导入服务
-const SourceMapService = require('./services/sourcemap');
+const SourceMapService    = require('./services/sourcemap');
+const OssSourceMapService = require('./services/sourcemapOss');
 
 // 导入路由
 const createErrorRoutes = require('./routes/errors');
@@ -29,6 +31,7 @@ const createSourceMapRoutes = require('./routes/sourcemap');
 const createIndexRoutes = require('./routes/index');
 const createInstanceRoutes = require('./routes/instance');
 const createAlarmRoutes = require('./routes/alarm');
+const createAppkeyRoutes = require('./routes/appkey');
 const authRoutes = require('./routes/auth');
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -66,6 +69,7 @@ class MonitorServer {
         this.models.index = new IndexModel(this.db);
         this.models.instance = new InstanceModel(this.db);
         this.models.alarm = new AlarmModel(this.db);
+        this.models.appkey = new AppkeyModel(this.db);
     }
 
     /**
@@ -96,6 +100,7 @@ class MonitorServer {
                 this.models.index = new IndexModel(this.db);
                 this.models.instance = new InstanceModel(this.db);
                 this.models.alarm = new AlarmModel(this.db);
+                this.models.appkey = new AppkeyModel(this.db);
 
                 console.log('✅ 数据库重连成功，所有服务已恢复！');
                 clearInterval(this._reconnectTimer);
@@ -108,11 +113,23 @@ class MonitorServer {
 
     /**
      * 初始化服务
+     * 若 OSS 环境变量已完整配置，使用 OssSourceMapService；否则降级为本地文件模式。
      */
     initServices() {
         console.log('🔧 初始化服务...');
-        const sourcemapDir = path.resolve(__dirname, '..', serverConfig.sourcemap.dir);
-        this.services.sourcemap = new SourceMapService(sourcemapDir);
+
+        const ossConfig = serverConfig.oss;
+        const ossEnabled = ossConfig.endpoint && ossConfig.accessKey && ossConfig.secretKey;
+
+        if (ossEnabled) {
+            this.services.sourcemap = new OssSourceMapService(ossConfig);
+            console.log('✅ OSS 模式已启用，SourceMap 将从 OSS 读取');
+        } else {
+            const sourcemapDir = path.resolve(__dirname, '..', serverConfig.sourcemap.dir);
+            this.services.sourcemap = new SourceMapService(sourcemapDir);
+            console.log('⚠️  OSS 未配置，降级为本地文件模式（OSS_ENDPOINT/OSS_ACCESS_KEY/OSS_SECRET_KEY 未设置）');
+        }
+
         console.log('✅ 服务初始化完成');
     }
 
@@ -150,9 +167,10 @@ class MonitorServer {
         this.app.use(authMiddleware);
 
         // 新的 API 路由
-        this.app.use('/api/errors', createErrorRoutes(this.models.error, this.services.sourcemap, this.models.instance, this.models.alarm, this.models.breadcrumb));
-        this.app.use('/api/config', createConfigRoutes(this.models.config));
+        this.app.use('/api/errors', createErrorRoutes(this.models.error, this.services.sourcemap, this.models.instance, this.models.alarm, this.models.breadcrumb, this.models.appkey));
+        this.app.use('/api/config', createConfigRoutes(this.models.config, this.models.appkey));
         this.app.use('/api/sourcemap', createSourceMapRoutes(this.services.sourcemap));
+        this.app.use('/api/appkey', createAppkeyRoutes(this.models.appkey));
 
         // 指标和实例路由
         this.app.use('/api/index', createIndexRoutes(this.models.index));
@@ -220,11 +238,27 @@ class MonitorServer {
         });
 
         // 兼容旧接口：获取配置
-        this.app.get('/wczj/monitor/config', (req, res) => {
+        this.app.get('/wczj/monitor/config', async (req, res) => {
             try {
-                const { project, env, customer_name } = req.query;
+                const { project, env, customer_name, appkey } = req.query;
 
-                console.log('[Config API] Request:', { project, env, customer_name });
+                console.log('[Config API] Request:', { project, env, customer_name, appkey });
+
+                // --- AppKey 强校验拦截器（前置关闭 SDK）---
+                if (appkey && this.models.appkey) {
+                    const appkeyRecord = await this.models.appkey.findByAppkey(appkey);
+                    if (!appkeyRecord || appkeyRecord.status !== 1) {
+                        return res.json({
+                            enabled: false,
+                            appkeyInvalid: true,
+                            emergency: {
+                                closeMonitor: true,
+                                reason: 'AppKey未注册或已被禁用'
+                            }
+                        });
+                    }
+                }
+                // ----------------------------------------
 
                 // 从数据库查询配置
                 const dbConfig = this.models.config.findOne(project, env, customer_name || null);
@@ -349,6 +383,7 @@ class MonitorServer {
                 console.log('  POST   /api/alarm/query/page       - 告警记录');
                 console.log('  POST   /api/index/query/page       - 指标监控');
                 console.log('  POST   /api/instance/query/page    - 实例列表');
+                console.log('  GET    /api/appkey/list            - AppKey查询');
                 console.log('--- 系统 & 运维 ---');
                 console.log('  POST   /api/sourcemap/parse        - SourceMap解析');
                 console.log('  GET    /health                     - 健康检查');

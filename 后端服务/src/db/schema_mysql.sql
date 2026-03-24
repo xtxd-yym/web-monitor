@@ -31,16 +31,18 @@ CREATE INDEX `idx_error_logs_created_at` ON `error_logs` (`created_at`);
 -- 2. 配置表
 CREATE TABLE IF NOT EXISTS `monitor_configs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `appkey` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'AppKey',
   `project` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '项目标识',
   `env` VARCHAR(50) NOT NULL DEFAULT 'production' COMMENT '环境',
   `customer_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '客户名称',
   `config_json` LONGTEXT COMMENT '配置内容(JSON)',
   `updated_at` BIGINT NOT NULL DEFAULT 0 COMMENT '更新时间戳(毫秒)',
   `updated_by` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '更新人',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_appkey_customer` (`appkey`, `customer_name`),
+  KEY `idx_appkey` (`appkey`),
+  KEY `idx_customer` (`customer_name`)
 ) DEFAULT CHARSET=utf8mb4 COMMENT='监控配置表';
-
-CREATE UNIQUE INDEX `uniq_configs_project_env_customer` ON `monitor_configs` (`project`, `env`, `customer_name`);
 
 -- 3. 面包屑表 (用户行为追踪)
 CREATE TABLE IF NOT EXISTS `user_breadcrumbs` (
@@ -104,9 +106,9 @@ CREATE TABLE IF NOT EXISTS `alarm_records` (
   `alarm_level` VARCHAR(20) NOT NULL DEFAULT 'L1' COMMENT '告警级别: L1/L2/L3',
   `alarm_message` TEXT COMMENT '告警消息',
   `alarm_status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/confirmed/resolved',
-  `customer_name` VARCHAR(255) COMMENT '客户名称',
-  `appkey` VARCHAR(100) COMMENT 'AppKey',
-  `service_name` VARCHAR(100) COMMENT '服务名称',
+  `customer_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '客户名称',
+  `appkey` VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'AppKey',
+  `service_name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '服务名称',
   `created_at` BIGINT NOT NULL DEFAULT 0 COMMENT '创建时间戳(毫秒)',
   `updated_at` BIGINT NOT NULL DEFAULT 0 COMMENT '更新时间戳(毫秒)',
   PRIMARY KEY (`id`)
@@ -115,6 +117,21 @@ CREATE TABLE IF NOT EXISTS `alarm_records` (
 CREATE INDEX `idx_alarm_records_created_at` ON `alarm_records` (`created_at`);
 CREATE INDEX `idx_alarm_records_status` ON `alarm_records` (`alarm_status`);
 
+-- 7. AppKey 注册中心表
+CREATE TABLE IF NOT EXISTS `appkey_registry` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `appkey` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'AppKey(全局唯一)',
+  `customer_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '所属客户名称',
+  `service_name` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '关联服务/组件名称',
+  `app_owner` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '申请人/负责人',
+  `app_status` INT NOT NULL DEFAULT 1 COMMENT '状态: 1启用 0禁用',
+  `created_at` BIGINT NOT NULL DEFAULT 0 COMMENT '创建时间戳(毫秒)',
+  `updated_at` BIGINT NOT NULL DEFAULT 0 COMMENT '更新时间戳(毫秒)',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_appkey` (`appkey`),
+  KEY `idx_customer` (`customer_name`)
+) DEFAULT CHARSET=utf8mb4 COMMENT='AppKey注册表';
+
 -- ===========================================
--- 执行完毕！共 6 张表
+-- 执行完毕！共 7 张表
 -- ===========================================
