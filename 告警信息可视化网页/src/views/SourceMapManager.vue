@@ -21,7 +21,7 @@
           <el-option
             v-for="item in appkeyList"
             :key="item.appkey"
-            :label="`${item.project || item.appkey} (${item.appkey})`"
+            :label="`${item.service_name || item.appkey} (${item.appkey})`"
             :value="item.appkey"
           />
         </el-select>

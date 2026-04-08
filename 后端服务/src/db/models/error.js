@@ -350,8 +350,19 @@ class ErrorModel {
         const { project, env, startTime, endTime, interval = 'hour' } = params;
 
         try {
-            let whereConditions = ['project = ?', 'env = ?'];
-            let queryParams = [project, env];
+            // ================= 修复区域 =================
+            let whereConditions = [];
+            let queryParams = [];
+
+            if (project) {
+                whereConditions.push('project = ?');
+                queryParams.push(project);
+            }
+            if (env) {
+                whereConditions.push('env = ?');
+                queryParams.push(env);
+            }
+            // ============================================
 
             if (startTime) {
                 whereConditions.push('created_at >= ?');
@@ -409,6 +420,86 @@ class ErrorModel {
             };
         } catch (error) {
             console.error('获取错误趋势失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 按 AppKey 分组统计错误量（用于 Dashboard）
+     * 返回: [ { appkey, service_name, total, byType }, ... ]
+     * @param {Object} params - { startTime, endTime }
+     */
+    async getStatsByAppkey(params = {}) {
+        // === 修改点 1: 接收 project 和 env ===
+        const { project, env, startTime, endTime } = params;
+
+        let where = [];
+        let args = [];
+
+        // === 修改点 2: 增加动态 WHERE 条件 ===
+        if (project) { where.push('project = ?'); args.push(project); }
+        if (env) { where.push('env = ?'); args.push(env); }
+
+        if (startTime) { where.push('created_at >= ?'); args.push(startTime); }
+        if (endTime) { where.push('created_at <= ?'); args.push(endTime); }
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        try {
+            // 全量取出 extra_data + 分类字段（数量级可控，按 appkey 聚合后返回）
+            let rows;
+            if (this.db.type === 'mysql') {
+                rows = await this.db.allAsync(`
+                    SELECT /* FORCE_MASTER */
+                        JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.appkey'))       AS appkey,
+                        JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.service_name')) AS service_name,
+                        error_type,
+                        SUM(occurrence_count) AS cnt
+                    FROM error_logs
+                    ${whereClause}
+                    GROUP BY appkey, service_name, error_type
+                    ORDER BY appkey ASC
+                `, args);
+            } else {
+                // SQLite: 分两步（先取 extra_data 字符串，JS 侧解析）
+                rows = await this.db.allAsync(`
+                    SELECT extra_data, error_type, SUM(occurrence_count) AS cnt
+                    FROM error_logs
+                    ${whereClause}
+                    GROUP BY extra_data, error_type
+                `, args);
+                // 展开 extra_data 中的 appkey / service_name
+                rows = rows.map(r => {
+                    let appkey = '', service_name = '';
+                    try {
+                        const d = JSON.parse(r.extra_data || '{}');
+                        appkey = d.appkey || '';
+                        service_name = d.service_name || '';
+                    } catch (_) { }
+                    return { appkey, service_name, error_type: r.error_type, cnt: r.cnt };
+                });
+            }
+
+            // 聚合成 Map<appkey, { appkey, service_name, total, byType }>
+            const map = new Map();
+            for (const row of rows) {
+                const key = row.appkey || '(unknown)';
+                if (!map.has(key)) {
+                    map.set(key, {
+                        appkey: key,
+                        service_name: row.service_name || '',
+                        total: 0,
+                        byType: {}
+                    });
+                }
+                const entry = map.get(key);
+                const cnt = Number(row.cnt) || 0;
+                entry.total += cnt;
+                entry.byType[row.error_type] = (entry.byType[row.error_type] || 0) + cnt;
+            }
+
+            return Array.from(map.values()).sort((a, b) => b.total - a.total);
+        } catch (error) {
+            console.error('按 AppKey 统计错误失败:', error);
             throw error;
         }
     }

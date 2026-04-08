@@ -198,6 +198,19 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                                 }
                             }
 
+                            // 2.3 检查 repeat_count：在 time_frame 窗口内，触发次数不得超过 repeat_count
+                            // repeat_count 语义：每个时间窗口内最多发送 N 封邮件
+                            const repeatCount = parseInt(ruleConfig.repeat_count) || 0; // 0 表示不限制
+                            if (repeatCount > 0) {
+                                const timeFrame4Count = (rule.time_frame || 60) * 1000;
+                                const windowStart = Date.now() - timeFrame4Count;
+                                const firedInWindow = await alarmModel.countInWindow(rule.id, windowStart);
+                                if (firedInWindow >= repeatCount) {
+                                    console.log(`[Alarm] repeat_count reached: ${rule.instance_name} (fired ${firedInWindow}/${repeatCount} in window)`);
+                                    continue; // 当前时间窗口内已达最大发送次数，跳过
+                                }
+                            }
+
                             // Implemented threshold check 
                             const timeFrame = rule.time_frame || 60; // default 60s
                             const now = Date.now();
@@ -347,6 +360,59 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
 
     // ⚠️ 注意：/:id 路由已移至 /stats 和 /trend 路由之后
     // 因为 Express 按顺序匹配，/:id 会拦截 /stats 等请求
+
+    /**
+     * GET /api/errors/dashboard
+     * Dashboard 综合统计接口，一次性返回：
+     *   - statsByAppkey: 按 AppKey 分组的错误量（含 byType）
+     *   - trend:         7天按天趋势（含分类）
+     *   - topErrors:     高频错误 Top 10
+     *   - recentAlarms:  最近 5 条告警快照
+     */
+    router.get('/dashboard', async (req, res) => {
+        try {
+            // === 修改点 1: 提取 project 和 env ===
+            const { project, env } = req.query;
+            const days = parseInt(req.query.days) || 7;
+            const endTime = Date.now();
+            const startTime = endTime - days * 24 * 60 * 60 * 1000;
+
+            // === 修改点 2: 将参数透传给底层 Model ===
+            const [statsByAppkey, trendData, statsGlobal] = await Promise.all([
+                errorModel.getStatsByAppkey({ project, env, startTime, endTime }),
+                errorModel.getTrend({ project, env, startTime, endTime, interval: 'day' }),
+                errorModel.getStats({ project, env, startTime, endTime })
+            ]);
+
+            // 最近告警（直接查 alarm_records）
+            let recentAlarms = [];
+            if (alarmModel) {
+                const alarmResult = await alarmModel.findList({
+                    page: 1,
+                    per: 5,
+                    project, // 增加按项目过滤
+                    env      // 增加按环境过滤
+                });
+                recentAlarms = alarmResult.data || [];
+            }
+
+            res.json({
+                success: true,
+                data: {
+                    statsByAppkey,
+                    trend: trendData.timeline || [],
+                    topErrors: (statsGlobal.topErrors || []).slice(0, 10),
+                    typeDistribution: statsGlobal.byType || {},
+                    totalErrors: statsGlobal.total || 0,
+                    recentAlarms,
+                    timeRange: { startTime, endTime, days }
+                }
+            });
+        } catch (error) {
+            console.error('Dashboard 数据获取失败:', error);
+            res.status(500).json({ success: false, msg: 'Dashboard 数据获取失败', error: error.message });
+        }
+    });
 
     /**
      * GET /api/errors/stats

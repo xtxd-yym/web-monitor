@@ -125,6 +125,23 @@ class AlarmModel {
     }
 
     /**
+     * 统计某实例在时间窗口内的触发次数（用于 repeat_count 校验）
+     * @param {number} instanceId - alarm_instances 主键 (PK)
+     * @param {number} windowStart - 时间窗口起始时间戳(ms)
+     * @returns {number}
+     */
+    async countInWindow(instanceId, windowStart) {
+        try {
+            const sql = `SELECT COUNT(*) as cnt FROM alarm_records WHERE instance_id = ? AND created_at >= ?`;
+            const row = await this.db.getAsync(sql, [instanceId, windowStart]);
+            return (row && row.cnt) ? Number(row.cnt) : 0;
+        } catch (e) {
+            console.error('countInWindow failed', e);
+            return 0;
+        }
+    }
+
+    /**
      * 删除告警记录
      */
     async delete(id) {
