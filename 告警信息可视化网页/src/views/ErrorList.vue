@@ -103,7 +103,21 @@
           <el-descriptions-item label="位置">行 {{ currentError.error_line || 0 }}, 列 {{ currentError.error_col || 0 }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3>堆栈信息</h3>
+        <div style="margin-top: 20px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="margin: 0;">堆栈信息</h3>
+          <el-button type="primary" color="#626aef" @click="analyzeWithAI" :loading="aiLoading">✨ 唤醒 AI 智能诊断</el-button>
+        </div>
+
+        <el-card v-if="aiResponse || aiLoading" shadow="never" style="margin-bottom: 15px; border-color: #d9ecff; background-color: #ecf5ff;">
+            <template #header>
+               <div style="display: flex; align-items: center; color: #409EFF; font-weight: bold;">
+                  🤖 AI 诊断结果
+               </div>
+            </template>
+            <div v-if="aiLoading" v-loading="true" style="height: 60px;"></div>
+            <div v-else class="markdown-body" v-html="parsedAiResponse" style="font-size: 14px; line-height: 1.6; color: #333;"></div>
+        </el-card>
+
         <el-alert
           v-if="currentError.parsedData?.original_stack"
           title="已解析 SourceMap"
@@ -149,9 +163,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '../api/request';
+import { marked } from 'marked';
 
 const form = reactive({
   project: '',
@@ -171,6 +186,19 @@ const pageSize = ref(20);
 
 const drawerVisible = ref(false);
 const currentError = ref(null);
+
+const aiLoading = ref(false);
+const aiResponse = ref('');
+
+const parsedAiResponse = computed(() => {
+  if (!aiResponse.value) return '';
+  try {
+    return marked.parse(aiResponse.value);
+  } catch (e) {
+    console.error('Markdown parse error:', e);
+    return aiResponse.value;
+  }
+});
 
 const getErrorTypeTag = (type) => {
   const map = {
@@ -219,6 +247,8 @@ const resetForm = () => {
 };
 
 const showDetail = async (row) => {
+  aiResponse.value = '';
+  aiLoading.value = false;
   // 请求详情接口，获取完整数据包括面包屑
   try {
     const res = await request.get(`/errors/${row.id}`);
@@ -262,6 +292,25 @@ const getBreadcrumbTagType = (category) => {
 onMounted(() => {
   loadData();
 });
+
+const analyzeWithAI = async () => {
+  if (!currentError.value) return;
+  aiLoading.value = true;
+  aiResponse.value = '';
+  try {
+    const res = await request.post('/ai/analyze', { errorInfo: currentError.value });
+    if (res.success) {
+      aiResponse.value = res.data;
+    } else {
+      ElMessage.error(res.msg || 'AI 分析失败');
+    }
+  } catch (e) {
+    console.error(e);
+    ElMessage.error('AI 请求异常');
+  } finally {
+    aiLoading.value = false;
+  }
+};
 
 const handleDelete = async (row) => {
   try {
@@ -326,4 +375,16 @@ const handleDelete = async (row) => {
   font-size: 12px;
   margin-top: 10px;
 }
+
+/* AI Markdown Styles */
+:deep(.markdown-body) { text-align: left; }
+:deep(.markdown-body p) { margin-top: 0; margin-bottom: 10px; }
+:deep(.markdown-body code) { background-color: #e4e4e7; padding: 2px 4px; border-radius: 4px; font-family: monospace; color: #d90f0f; }
+:deep(.markdown-body pre) { background-color: #272822; color: #f8f8f2; padding: 12px; border-radius: 6px; overflow-x: auto; margin-bottom: 10px; font-family: monospace; font-size: 13px; }
+:deep(.markdown-body pre code) { background-color: transparent; padding: 0; color: inherit; }
+:deep(.markdown-body h1), :deep(.markdown-body h2), :deep(.markdown-body h3) { margin-top: 15px; margin-bottom: 10px; font-weight: bold; color: #303133; border-bottom: 1px solid #ebeef5; padding-bottom: 6px; }
+:deep(.markdown-body h3) { font-size: 16px; }
+:deep(.markdown-body ul), :deep(.markdown-body ol) { padding-left: 20px; margin-bottom: 10px; }
+:deep(.markdown-body li) { margin-bottom: 4px; }
+:deep(.markdown-body blockquote) { margin: 0 0 10px 0; padding: 10px; background: #f2f6fc; border-left: 4px solid #409eff; border-radius: 4px; }
 </style>

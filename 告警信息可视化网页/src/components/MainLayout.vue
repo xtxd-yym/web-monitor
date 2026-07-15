@@ -130,8 +130,7 @@ const currentTitle = computed(() => route.meta.title || '控制台');
 .el-main {
   background-color: #f5f7fa;
   padding: 20px;
-  overflow: hidden; /* Prevent main scrollbar, let view handle it */
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto; /* Allow vertical scrolling for long pages like Dashboard */
+  overflow-x: hidden;
 }
 </style>

@@ -32,6 +32,7 @@ const createIndexRoutes = require('./routes/index');
 const createInstanceRoutes = require('./routes/instance');
 const createAlarmRoutes = require('./routes/alarm');
 const createAppkeyRoutes = require('./routes/appkey');
+const createAiRoutes = require('./routes/ai');
 const authRoutes = require('./routes/auth');
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -171,6 +172,7 @@ class MonitorServer {
         this.app.use('/api/config', createConfigRoutes(this.models.config, this.models.appkey));
         this.app.use('/api/sourcemap', createSourceMapRoutes(this.services.sourcemap));
         this.app.use('/api/appkey', createAppkeyRoutes(this.models.appkey));
+        this.app.use('/api/ai', createAiRoutes());
 
         // 指标和实例路由
         this.app.use('/api/index', createIndexRoutes(this.models.index));
