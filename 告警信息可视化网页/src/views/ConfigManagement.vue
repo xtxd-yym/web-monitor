@@ -80,11 +80,29 @@
           </el-col>
         </el-row>
         <el-form-item label="配置内容" prop="config_json">
+          <!-- 参数说明面板 -->
+          <el-collapse v-model="helpExpanded" class="config-help-collapse">
+            <el-collapse-item name="help">
+              <template #title>
+                <el-icon style="margin-right: 4px; color: #409eff"><InfoFilled /></el-icon>
+                <span style="font-size: 13px; color: #409eff; font-weight: 500">查看参数说明</span>
+              </template>
+              <el-table :data="configHelpItems" size="small" border class="config-help-table">
+                <el-table-column prop="key" label="配置项" width="220" />
+                <el-table-column prop="type" label="类型" width="70" />
+                <el-table-column prop="default" label="默认值" width="80" />
+                <el-table-column prop="desc" label="功能说明" />
+              </el-table>
+            </el-collapse-item>
+          </el-collapse>
+          <!-- 配置 JSON 编辑区 -->
           <el-input
             v-model="formData.config_json"
             type="textarea"
-            :rows="15"
+            :rows="14"
             placeholder="请输入JSON格式的配置"
+            class="config-json-input"
+            spellcheck="false"
           />
         </el-form-item>
       </el-form>
@@ -108,6 +126,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { InfoFilled } from '@element-plus/icons-vue';
 import request from '../api/request';
 
 const loading = ref(false);
@@ -117,6 +136,37 @@ const viewDialogVisible = ref(false);
 const isEdit = ref(false);
 const dialogTitle = ref('新增配置');
 const configFormRef = ref(null);
+const helpExpanded = ref([]); // 默认折叠
+
+// 配置参数说明数据
+const configHelpItems = [
+  // 顶层
+  { key: 'enabled', type: 'boolean', default: 'true', desc: '全局开关：是否启用监控 SDK，关闭后所有监控功能停止' },
+  // config.*
+  { key: 'config.enableErrorMonitoring', type: 'boolean', default: 'true', desc: '是否监控 JS 运行时错误（window.onerror）' },
+  { key: 'config.enablePromiseRejection', type: 'boolean', default: 'true', desc: '是否监控 Promise 未处理的拒绝（unhandledrejection）' },
+  { key: 'config.enableResourceErrors', type: 'boolean', default: 'true', desc: '是否监控资源加载失败（img/script/link 等）' },
+  { key: 'config.enableNetworkMonitoring', type: 'boolean', default: 'true', desc: '是否监控网络请求（XHR + Fetch 层面）' },
+  { key: 'config.enableXHRMonitoring', type: 'boolean', default: 'true', desc: '是否监控 XMLHttpRequest 请求（依赖 enableNetworkMonitoring）' },
+  { key: 'config.enableFetchMonitoring', type: 'boolean', default: 'true', desc: '是否监控 Fetch API 请求（依赖 enableNetworkMonitoring）' },
+  { key: 'config.enablePerformanceMonitoring', type: 'boolean', default: 'false', desc: '是否采集性能指标（FCP/LCP/CLS/TTFB），开启后有小幅性能消耗' },
+  { key: 'config.enableWhiteScreenDetection', type: 'boolean', default: 'true', desc: '是否开启白屏检测功能，页面白屏时自动上报' },
+  { key: 'config.enableUserTracking', type: 'boolean', default: 'false', desc: '是否记录用户行为（点击/滚动/页面切换）作为面包屑，开启后 payload 增大' },
+  { key: 'config.maxErrorsPerMinute', type: 'number', default: '100', desc: '客户端限流：每分钒最多上报多少条错误，超出后丢弃，防止刷屏攻击' },
+  { key: 'config.dedupeWindow', type: 'number', default: '300', desc: '错误去重时间窗口（秒），相同错误在该时间内只上报一次' },
+  { key: 'config.logLevel', type: 'string', default: '"warn"', desc: 'SDK 内部日志级别，可选 debug / info / warn / error，不影响上报行为' },
+  { key: 'config.samplingRates.javascript', type: 'number', default: '1.0', desc: 'JS 错误采样率，1.0 = 100%，0.5 = 随机采样 50%' },
+  { key: 'config.samplingRates.promise', type: 'number', default: '1.0', desc: 'Promise 拒绝采样率' },
+  { key: 'config.samplingRates.resource', type: 'number', default: '0.5', desc: '资源错误采样率' },
+  { key: 'config.samplingRates.network', type: 'number', default: '0.3', desc: '网络错误采样率' },
+  // grayControl.*
+  { key: 'grayControl.enabled', type: 'boolean', default: 'false', desc: '是否开启灰度发布，可按比例/用户列表渐进接入' },
+  { key: 'grayControl.strategy', type: 'string', default: '"percentage"', desc: '灰度策略：percentage（比例）/ whitelist（白名单）' },
+  { key: 'grayControl.percentage', type: 'number', default: '100', desc: '灰度比例 0~100，100 = 全量接入' },
+  // emergency.*
+  { key: 'emergency.closeMonitor', type: 'boolean', default: 'false', desc: '紧急开关：true 时远程关闭所有客户端监控，无需发版' },
+  { key: 'emergency.reason', type: 'string/null', default: 'null', desc: '紧急关闭原因，会在客户端控制台弹出告警日志' },
+];
 
 const searchForm = reactive({
   appkey: '',
@@ -328,5 +378,43 @@ onMounted(() => {
 :deep(.list-card .el-card__body) {
   flex: 1;
   overflow: auto;
+}
+
+/* 参数说明面板 */
+.config-help-collapse {
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid #e6e9f0;
+  border-radius: 4px;
+  background: #fafbff;
+}
+
+:deep(.config-help-collapse .el-collapse-item__header) {
+  padding: 0 12px;
+  height: 36px;
+  background: #f0f5ff;
+  border-radius: 4px 4px 0 0;
+}
+
+:deep(.config-help-collapse .el-collapse-item__content) {
+  padding: 8px;
+}
+
+.config-help-table {
+  font-size: 12px;
+}
+
+:deep(.config-help-table .el-table__cell) {
+  padding: 4px 8px;
+}
+
+.config-json-input {
+  width: 100%;
+}
+
+:deep(.config-json-input textarea) {
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

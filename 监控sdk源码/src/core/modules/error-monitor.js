@@ -476,6 +476,43 @@ function buildBreadcrumbs(userActions, limit = 30) {
     };
   });
 }
+/**
+ * [TD-01] Payload 截断降级函数
+ * 防止极限场景（200 条面包屑 + 深层堆栈）Payload 超过 64KB 被浏览器或网关静默丢弃。
+ * 两步降级，始终保持 fingerprint / type / message 等核心错误身份信息不丢失。
+ * @param {Object} reportData - 原始上报数据
+ * @param {number} [limitBytes=65536] - Payload 上限字节数，默认 64KB
+ * @returns {Object} 安全的上报数据
+ */
+function safeTruncatePayload(reportData, limitBytes = 64 * 1024) {
+  let json = JSON.stringify(reportData);
+  if (json.length <= limitBytes) return reportData; // 无需截断
+
+  // --- 第一步降级：面包屑缩减到最近 5 条 ---
+  console.warn('[Monitor][TD-01] Payload 超限，执行第一步降级：截断面包屑');
+  const step1 = {
+    ...reportData,
+    list: reportData.list.map(item => ({
+      ...item,
+      breadcrumbs: (item.breadcrumbs || []).slice(-5)
+    }))
+  };
+  json = JSON.stringify(step1);
+  if (json.length <= limitBytes) return step1;
+
+  // --- 第二步降级：清空面包屑 + 堆栈只保留前 5 行 ---
+  // fingerprint / type / message 等核心字段保持不变，错误身份信息不丢
+  console.warn('[Monitor][TD-01] Payload 仍超限，执行第二步降级：截断堆栈');
+  return {
+    ...step1,
+    list: step1.list.map(item => ({
+      ...item,
+      breadcrumbs: [],
+      stack: (item.stack || '').split('\n').slice(0, 5).join('\n') + '\n... (stack truncated by TD-01)'
+    }))
+  };
+}
+
 export async function reportErrors(monitor, errorType) {
   if (isLocalEnv(monitor)) {
     console.log('[Monitor] 本地开发环境检测，跳过错误网络上报');
@@ -549,7 +586,9 @@ export async function reportErrors(monitor, errorType) {
     // 使用外部传入的monitorReport函数进行上报
     let response;
     if (typeof monitor.options.monitorReport === 'function') {
-      response = await monitor.options.monitorReport(reportData);
+      // [TD-01] 上报前先进行 Payload 安全截断，防止超过 64KB 被网关静默丢弃
+      const safeReportData = safeTruncatePayload(reportData);
+      response = await monitor.options.monitorReport(safeReportData);
     } else {
       console.warn('monitorReport function is not provided, skipping report');
       response = { ok: false };

@@ -9,22 +9,43 @@
     <!-- 工具栏 -->
     <el-card class="toolbar-card" shadow="never">
       <div class="toolbar">
-        <!-- appkey 选择 -->
-        <el-select
-          v-model="selectedAppkey"
-          placeholder="选择 Appkey"
-          style="width: 280px"
-          filterable
-          clearable
-          @change="onAppkeyChange"
-        >
-          <el-option
-            v-for="item in appkeyList"
-            :key="item.appkey"
-            :label="`${item.service_name || item.appkey} (${item.appkey})`"
-            :value="item.appkey"
-          />
-        </el-select>
+        <!-- appkey 精准搜索区 -->
+        <div class="appkey-search-group">
+          <!-- 搜索类型切换 -->
+          <el-select
+            v-model="searchMode"
+            style="width: 120px"
+            @change="onSearchModeChange"
+          >
+            <el-option label="按服务名" value="name" />
+            <el-option label="按 AppKey" value="appkey" />
+          </el-select>
+
+          <!-- Appkey 精准选择器 -->
+          <el-select
+            v-model="selectedAppkey"
+            :placeholder="searchMode === 'name' ? '输入服务名搜索...' : '输入 AppKey 搜索...'"
+            style="width: 320px"
+            filterable
+            clearable
+            :filter-method="filterAppkeyList"
+            @change="onAppkeyChange"
+            @visible-change="onDropdownVisibleChange"
+          >
+            <el-option
+              v-for="item in filteredAppkeyList"
+              :key="item.appkey"
+              :label="item.service_name ? `${item.service_name} (${item.appkey})` : item.appkey"
+              :value="item.appkey"
+            >
+              <!-- 自定义下拉项：两行显示，区分同名应用 -->
+              <div class="appkey-option">
+                <span class="appkey-option__name">{{ item.service_name || item.appkey }}</span>
+                <span class="appkey-option__key">{{ item.appkey }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </div>
 
         <!-- 上传按钮 -->
         <el-upload
@@ -140,13 +161,15 @@ import { Upload, Refresh, Delete, Document, SuccessFilled, CircleCloseFilled, Lo
 import request from '../api/request.js';
 
 // ─── 状态 ─────────────────────────────────────────────────
-const selectedAppkey = ref('');
-const appkeyList     = ref([]);
-const fileList       = ref([]);
-const loading        = ref(false);
-const uploading      = ref(false);
-const uploadQueue    = ref([]);
-const uploadRef      = ref(null);
+const selectedAppkey     = ref('');
+const appkeyList         = ref([]);   // 全量列表
+const filteredAppkeyList = ref([]);   // 当前过滤后展示的列表
+const searchMode         = ref('name'); // 'name' | 'appkey'
+const fileList           = ref([]);
+const loading            = ref(false);
+const uploading          = ref(false);
+const uploadQueue        = ref([]);
+const uploadRef          = ref(null);
 
 // ─── 初始化 ────────────────────────────────────────────────
 onMounted(async () => {
@@ -168,7 +191,7 @@ async function fetchAppkeys() {
     } else if (Array.isArray(res)) {
       list = res;
     }
-    // 去重
+    // 去重（按 appkey 去重）
     const seen = new Set();
     appkeyList.value = list.filter(item => {
       const key = item.appkey;
@@ -176,9 +199,42 @@ async function fetchAppkeys() {
       seen.add(key);
       return true;
     });
+    // 初始化展示列表（全量）
+    filteredAppkeyList.value = [...appkeyList.value];
   } catch (e) {
     console.warn('[SourceMapManager] 获取 Appkey 列表失败:', e.message);
   }
+}
+
+// ─── 搜索类型切换 ──────────────────────────────────────────
+function onSearchModeChange() {
+  // 切换模式时重置过滤，展示全量
+  filteredAppkeyList.value = [...appkeyList.value];
+}
+
+// ─── 下拉展开时重置过滤列表 ────────────────────────────────
+function onDropdownVisibleChange(visible) {
+  if (visible) {
+    filteredAppkeyList.value = [...appkeyList.value];
+  }
+}
+
+// ─── 本地过滤方法 ──────────────────────────────────────────
+function filterAppkeyList(query) {
+  if (!query) {
+    filteredAppkeyList.value = [...appkeyList.value];
+    return;
+  }
+  const q = query.toLowerCase();
+  filteredAppkeyList.value = appkeyList.value.filter(item => {
+    if (searchMode.value === 'appkey') {
+      // 按 AppKey 精准匹配
+      return (item.appkey || '').toLowerCase().includes(q);
+    } else {
+      // 按服务名匹配（默认）
+      return (item.service_name || item.appkey || '').toLowerCase().includes(q);
+    }
+  });
 }
 
 // ─── 切换 Appkey ───────────────────────────────────────────
@@ -335,6 +391,47 @@ function statusIcon(status) {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.appkey-search-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.appkey-search-group :deep(.el-select:first-child .el-input__wrapper) {
+  border-radius: 0;
+  border-right: 1px solid #dcdfe6;
+  box-shadow: none !important;
+  background: #f5f7fa;
+}
+
+.appkey-search-group :deep(.el-select:last-child .el-input__wrapper) {
+  border-radius: 0;
+  box-shadow: none !important;
+}
+
+/* 下拉项两行布局 */
+.appkey-option {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+  line-height: 1.4;
+}
+
+.appkey-option__name {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 500;
+}
+
+.appkey-option__key {
+  font-size: 11px;
+  color: #909399;
+  font-family: monospace;
 }
 
 .upload-queue-card {

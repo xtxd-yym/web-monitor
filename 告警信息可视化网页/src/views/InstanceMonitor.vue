@@ -109,38 +109,100 @@
     </el-card>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-model="drawerVisible" title="实例详情" size="50%">
-      <el-descriptions :column="1" border v-if="currentItem">
-        <el-descriptions-item label="ID">{{ currentItem.instance_id }}</el-descriptions-item>
-        <el-descriptions-item label="实例名称">{{ currentItem.instance_name }}</el-descriptions-item>
-        <el-descriptions-item label="项目">{{ currentItem.project }}</el-descriptions-item>
-        <el-descriptions-item label="关联指标代码">{{ currentItem.index_code }}</el-descriptions-item>
-        <el-descriptions-item label="启用状态">
-             <el-tag :type="currentItem.instance_status === 1 ? 'success' : 'danger'">{{ currentItem.instance_status === 1 ? '启用' : '禁用' }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="阈值">{{ currentItem.threshold }}</el-descriptions-item>
-        <el-descriptions-item label="时间窗口">{{ currentItem.time_frame }} 秒</el-descriptions-item>
-        <el-descriptions-item label="规则配置">
-          <pre v-if="currentItem.rules_json" style="margin: 0; max-height: 120px; overflow-y: auto; background: #f5f7fa; padding: 8px; border-radius: 4px; font-size: 12px;">{{ formatRulesJson(currentItem.rules_json) }}</pre>
-          <span v-else>-</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ formatTime(currentItem.created_at) }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ formatTime(currentItem.updated_at) }}</el-descriptions-item>
-      </el-descriptions>
+    <el-drawer v-model="drawerVisible" title="实例详情" size="50%" :before-close="handleDrawerClose">
+      <template v-if="currentItem">
+        <!-- 只读字段展示（关键标识不可改变） -->
+        <el-descriptions :column="1" border class="readonly-descriptions">
+          <el-descriptions-item label="ID">
+            <el-tag size="small" type="info">{{ currentItem.instance_id }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="项目">{{ currentItem.project }}</el-descriptions-item>
+          <el-descriptions-item label="关联指标代码">
+            <el-tag size="small">{{ currentItem.index_code }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatTime(currentItem.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ formatTime(currentItem.updated_at) }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-divider content-position="left">
+          <el-icon><Edit /></el-icon> 可编辑配置
+        </el-divider>
+
+        <!-- 可编辑字段表单 -->
+        <el-form :model="editForm" label-width="100px" class="edit-form" ref="editFormRef">
+          <el-form-item label="实例名称" prop="instance_name"
+            :rules="[{ required: true, message: '请输入实例名称', trigger: 'blur' }]">
+            <el-input v-model="editForm.instance_name" placeholder="请输入实例名称" />
+          </el-form-item>
+          <el-form-item label="启用状态">
+            <el-switch
+              v-model="editForm.enabled"
+              active-text="启用"
+              inactive-text="禁用"
+              :active-value="1"
+              :inactive-value="0"
+            />
+          </el-form-item>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="阈值" prop="threshold"
+                :rules="[{ required: true, message: '请输入阈值', trigger: 'change' }]">
+                <el-input-number v-model="editForm.threshold" :min="0" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="时间窗口" prop="time_frame"
+                :rules="[{ required: true, message: '请输入时间窗口', trigger: 'change' }]">
+                <el-input-number v-model="editForm.time_frame" :min="1" style="width: 100%">
+                  <template #suffix>秒</template>
+                </el-input-number>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="应急输出">
+            <el-input v-model="editForm.output" placeholder="告警触发时的异常描述" />
+          </el-form-item>
+          <el-form-item label="进阶配置">
+            <pre class="rules-json-preview">{{ formatRulesJson(currentItem.rules_json) }}</pre>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="editForm.description" type="textarea" :rows="2" placeholder="可选，实例描述" />
+          </el-form-item>
+        </el-form>
+
+        <!-- 操作按钮 -->
+        <div class="drawer-footer">
+          <el-button @click="drawerVisible = false">取消</el-button>
+          <el-button type="primary" :loading="saveLoading" @click="saveEdit">保存修改</el-button>
+        </div>
+      </template>
     </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
+import { ElMessage } from 'element-plus';
 import request from '../api/request';
-import { Search, Monitor } from '@element-plus/icons-vue';
+import { Search, Monitor, Edit } from '@element-plus/icons-vue';
 
 const loading = ref(false);
+const saveLoading = ref(false);
 const list = ref([]);
 const total = ref(0);
 const drawerVisible = ref(false);
 const currentItem = ref(null);
+const editFormRef = ref(null);
+
+// 可编辑字段的表单模型
+const editForm = reactive({
+  instance_name: '',
+  enabled: 1,
+  threshold: 0,
+  time_frame: 300,
+  output: '',
+  description: ''
+});
 
 const queryParams = reactive({
   instance_name: '',
@@ -177,8 +239,67 @@ const resetQuery = () => {
 };
 
 const showDetail = (row) => {
-    currentItem.value = row;
+    currentItem.value = { ...row };
+    // 初始化可编辑字段
+    editForm.instance_name = row.instance_name || '';
+    editForm.enabled = row.instance_status ?? 1;
+    editForm.threshold = row.threshold ?? 0;
+    editForm.time_frame = row.time_frame ?? 300;
+    // 从 rules_json 中提取 output
+    try {
+        const rules = row.rules_json ? JSON.parse(row.rules_json) : {};
+        editForm.output = rules.output || '';
+        editForm.description = rules.description || '';
+    } catch (e) {
+        editForm.output = '';
+        editForm.description = '';
+    }
     drawerVisible.value = true;
+};
+
+// 关闭抽屉操作
+const handleDrawerClose = (done) => {
+    done();
+};
+
+// 保存编辑
+const saveEdit = async () => {
+    if (!editFormRef.value) return;
+    try {
+        await editFormRef.value.validate();
+    } catch (e) {
+        return;
+    }
+    saveLoading.value = true;
+    try {
+        const res = await request.post('/instance/update', {
+            instance_id: currentItem.value.instance_id,
+            instance_name: editForm.instance_name,
+            enabled: editForm.enabled,
+            threshold: editForm.threshold,
+            time_frame: editForm.time_frame,
+            output: editForm.output,
+            description: editForm.description
+        });
+        if (res.code === 1 || res.success) {
+            ElMessage.success('保存成功');
+            // 同步更新列表中的该条
+            const target = list.value.find(i => i.instance_id === currentItem.value.instance_id);
+            if (target) {
+                target.instance_name = editForm.instance_name;
+                target.instance_status = editForm.enabled;
+                target.threshold = editForm.threshold;
+                target.time_frame = editForm.time_frame;
+            }
+            drawerVisible.value = false;
+        } else {
+            throw new Error(res.msg || '操作失败');
+        }
+    } catch (e) {
+        ElMessage.error('保存失败: ' + e.message);
+    } finally {
+        saveLoading.value = false;
+    }
 };
 
 const formatTime = (ts) => {
@@ -260,5 +381,36 @@ onMounted(() => {
     display: flex;
     justify-content: flex-end;
     flex-shrink: 0;
+}
+
+/* 抽屉相关样式 */
+.readonly-descriptions {
+  margin-bottom: 4px;
+}
+
+.edit-form {
+  margin-top: 8px;
+}
+
+.rules-json-preview {
+  margin: 0;
+  max-height: 100px;
+  overflow-y: auto;
+  background: #f5f7fa;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #606266;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
 }
 </style>

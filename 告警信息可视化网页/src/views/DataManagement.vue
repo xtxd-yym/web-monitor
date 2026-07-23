@@ -106,7 +106,28 @@
               </el-col>
               <el-col :span="12">
                 <el-form-item label="关联指标ID" required>
-                  <el-input v-model="formData.index_id" placeholder="请输入关联指标ID" />
+                  <el-select
+                    v-model="formData.index_id"
+                    placeholder="请选择关联指标"
+                    style="width: 100%"
+                    filterable
+                    clearable
+                  >
+                    <el-option
+                      v-for="idx in indexOptions"
+                      :key="idx.index_code"
+                      :label="`${idx.index_name} (${idx.index_code})`"
+                      :value="idx.index_code"
+                    >
+                      <div class="index-option">
+                        <span class="index-option__name">{{ idx.index_name }}</span>
+                        <el-tag size="small" type="info">{{ idx.index_code }}</el-tag>
+                      </div>
+                    </el-option>
+                  </el-select>
+                  <div v-if="indexOptions.length === 0 && !indexLoading" class="index-hint">
+                    暂无可用指标，请先在『添加指标』接口中添加
+                  </div>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -197,13 +218,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '../api/request';
 import { Setting, Edit, Check, Refresh, SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue';
 
 const selectedApi = ref('');
 const submitLoading = ref(false);
+const indexOptions = ref([]);   // 关联指标下拉选项
+const indexLoading = ref(false);
 
 const apiOptions = [
   { value: '/index/add', label: '添加指标' },
@@ -275,6 +298,25 @@ const resetForm = () => {
         }
     });
 };
+
+// 预加载全量指标列表（组件挂载时执行，不需要用户手动触发）
+const loadIndexOptions = async () => {
+    indexLoading.value = true;
+    try {
+        const res = await request.post('/index/query/page', { page: 1, per: 200 });
+        if (res.code === 1 && res.result && res.result.data) {
+            indexOptions.value = res.result.data;
+        }
+    } catch (e) {
+        console.warn('[DataManagement] 加载指标列表失败:', e.message);
+    } finally {
+        indexLoading.value = false;
+    }
+};
+
+onMounted(() => {
+    loadIndexOptions();
+});
 
 // 指标联想搜索
 const querySearchIndex = async (queryString, cb) => {
@@ -385,14 +427,29 @@ const validateForm = () => {
         }
     } else if (selectedApi.value.includes('instance')) {
          if (!formData.instance_id) {
-             ElMessage.warning('请输入实例ID');
+             ElMessage.warning('请输入实例 ID');
              return false;
         }
         if (!isDelete.value) {
              const required = ['instance_name', 'appkey', 'index_id', 'threshold', 'notice_person'];
              for (const field of required) {
-                 if (!formData[field]) {
-                     ElMessage.warning('请填写必填项');
+                 if (!formData[field] && formData[field] !== 0) {
+                     const labels = {
+                       instance_name: '实例名称',
+                       appkey: 'AppKey',
+                       index_id: '关联指标',
+                       threshold: '阈值',
+                       notice_person: '告警邮笱'
+                     };
+                     ElMessage.warning(`请填写必填项：${labels[field] || field}`);
+                     return false;
+                 }
+             }
+             // 校验关联指标 ID 是否来自已有指标列表
+             if (indexOptions.value.length > 0) {
+                 const validIndexIds = indexOptions.value.map(i => i.index_code);
+                 if (!validIndexIds.includes(formData.index_id)) {
+                     ElMessage.error(`关联指标 ID “${formData.index_id}” 不在已有指标中，请从下拉选择`);
                      return false;
                  }
              }
@@ -516,5 +573,29 @@ const submitForm = async () => {
 
 .params-card .card-header .el-icon {
     color: #67c23a;
+}
+
+/* 关联指标下拉项样式 */
+.index-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.index-option__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* 无指标时的提示文字 */
+.index-hint {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-top: 4px;
 }
 </style>

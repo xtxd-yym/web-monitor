@@ -90,16 +90,9 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
             const reportAppkey = body.appkey || '';
 
             for (const item of errorList) {
-                // 🔍 尝试通过 SourceMap 解析堆栈（按 appkey 定位对应的 .map 文件）
-                let originalStack = '';
-                if (item.stack) {
-                    try {
-                        const appkey = item.appkey || reportAppkey;
-                        originalStack = await sourcemapService.parseStack(item.stack, appkey);
-                    } catch (e) {
-                        console.warn('[SourceMap] 堆栈解析失败:', e.message);
-                    }
-                }
+                // [TD-02] SourceMap 解析已移至 GET /:id 详情接口按需执行。
+                // 上报接口只管快速落库，original_stack 留空占位，彻底消除高并发下的 Event Loop 阻塞。
+                const originalStack = '';
 
                 const errorData = {
                     project: item.project || body.project || 'default',
@@ -110,7 +103,7 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                     // 将解析后的堆栈和页面 URL 放入 extra_data 字段
                     extra_data: JSON.stringify({
                         ...(item.data || item.expand || {}),
-                        original_stack: originalStack,
+                        original_stack: '',   // [TD-02] 占位，查询详情时实时翻译
                         userAgent: item.userAgent || '',
                         pageUrl: item.url || ''  // 页面 URL
                     }),
@@ -537,10 +530,29 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                 }
             }
 
+            // [TD-02] 按需实时解析 SourceMap：仅在查看详情时执行，不在上报时执行。
+            // 读取 extra_data 中的占位 original_stack，若为空则触发解析。
+            let originalStack = '';
+            try {
+                const extraData = error.extra_data ? JSON.parse(error.extra_data) : {};
+                if (extraData.original_stack) {
+                    // 已有解析结果（历史兼容），直接使用
+                    originalStack = extraData.original_stack;
+                } else if (error.stack && sourcemapService) {
+                    // 占位为空，按需实时解析
+                    const appkey = error.appkey || '';
+                    originalStack = await sourcemapService.parseStack(error.stack, appkey);
+                }
+            } catch (e) {
+                console.warn('[SourceMap] 按需解析失败，降级返回原始堆栈:', e.message);
+                originalStack = error.stack || ''; // 降级：返回混淆堆栈
+            }
+
             res.json({
                 success: true,
                 data: {
                     ...error,
+                    original_stack: originalStack,
                     breadcrumbs
                 }
             });

@@ -10,13 +10,13 @@
       <div class="dash-controls">
         <el-select v-model="project" style="width: 160px" @change="loadDashboard">
           <el-option label="b2b-web-monitor" value="b2b-web-monitor" />
-          </el-select>
+        </el-select>
 
         <el-select v-model="env" style="width: 120px" @change="loadDashboard">
           <el-option label="生产环境" value="production" />
           <el-option label="测试环境" value="development" />
         </el-select>
-      
+
         <el-select v-model="days" style="width: 120px" @change="loadDashboard">
           <el-option label="近 7 天" :value="7" />
           <el-option label="近 14 天" :value="14" />
@@ -69,12 +69,7 @@
         </div>
         <div class="top-list">
           <div v-if="topErrors.length === 0" class="empty-tip">暂无数据</div>
-          <div
-            v-for="(err, idx) in topErrors"
-            :key="err.fingerprint"
-            class="top-item"
-            @click="openErrorDetail(err)"
-          >
+          <div v-for="(err, idx) in topErrors" :key="err.fingerprint" class="top-item" @click="openErrorDetail(err)">
             <div class="top-rank" :class="rankClass(idx)">{{ idx + 1 }}</div>
             <div class="top-info">
               <div class="top-msg">{{ err.error_message || err.message || '-' }}</div>
@@ -99,12 +94,8 @@
       </div>
       <div v-if="recentAlarms.length === 0" class="empty-tip">暂无告警记录</div>
       <div v-else class="alarm-grid">
-        <div
-          v-for="alarm in recentAlarms"
-          :key="alarm.id"
-          class="alarm-card"
-          :class="alarmLevelClass(alarm.alarm_level)"
-        >
+        <div v-for="alarm in recentAlarms" :key="alarm.id" class="alarm-card"
+          :class="alarmLevelClass(alarm.alarm_level)">
           <div class="alarm-card-level">{{ alarm.alarm_level || 'L1' }}</div>
           <div class="alarm-card-body">
             <div class="alarm-card-msg">{{ alarm.alarm_message || '-' }}</div>
@@ -125,10 +116,14 @@
           <el-descriptions-item label="错误类型">{{ currentError.error_type }}</el-descriptions-item>
           <el-descriptions-item label="错误信息">{{ currentError.error_message }}</el-descriptions-item>
           <el-descriptions-item label="触发次数">{{ currentError.occurrence_count }}</el-descriptions-item>
-          <el-descriptions-item label="最后发生">{{ new Date(currentError.updated_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }}</el-descriptions-item>
+          <el-descriptions-item label="最后发生">{{ new Date(currentError.updated_at).toLocaleString('zh-CN', {
+            timeZone:
+            'Asia/Shanghai' }) }}</el-descriptions-item>
           <el-descriptions-item label="文件">{{ currentError.error_file || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="currentError.parsedData?.appkey" label="AppKey">{{ currentError.parsedData.appkey }}</el-descriptions-item>
-          <el-descriptions-item v-if="currentError.parsedData?.service_name" label="组件名">{{ currentError.parsedData.service_name }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentError.parsedData?.appkey" label="AppKey">{{ currentError.parsedData.appkey
+            }}</el-descriptions-item>
+          <el-descriptions-item v-if="currentError.parsedData?.service_name" label="组件名">{{
+            currentError.parsedData.service_name }}</el-descriptions-item>
         </el-descriptions>
         <h4 style="margin: 16px 0 8px;">堆栈信息</h4>
         <div class="code-block">
@@ -151,20 +146,20 @@ const env = ref('production');
 const days = ref(7);
 const loading = ref(false);
 
-const statsByAppkey   = ref([]);  // [ { appkey, service_name, total, byType } ]
-const trend           = ref([]);  // [ { time, count, types:{} } ]
-const topErrors       = ref([]);  // Top 10
+const statsByAppkey = ref([]);  // [ { appkey, service_name, total, byType } ]
+const trend = ref([]);  // [ { time, count, types:{} } ]
+const topErrors = ref([]);  // Top 10
 const typeDistribution = ref({}); // { javascript: N, ... }
-const totalErrors     = ref(0);
-const recentAlarms    = ref([]);
+const totalErrors = ref(0);
+const recentAlarms = ref([]);
 
 const drawerVisible = ref(false);
-const currentError  = ref(null);
+const currentError = ref(null);
 
 // ─── 图表 ref ────────────────────────────────────────────────────────────────
 const trendRef = ref(null);
-const pieRef   = ref(null);
-const barRef   = ref(null);
+const pieRef = ref(null);
+const barRef = ref(null);
 let trendChart = null, pieChart = null, barChart = null;
 
 // ─── KPI 卡片 ────────────────────────────────────────────────────────────────
@@ -215,21 +210,21 @@ const loadDashboard = async () => {
   loading.value = true;
   try {
     // 新增：将 project 和 env 放入 params
-    const res = await request.get('/errors/dashboard', { 
-      params: { 
+    const res = await request.get('/errors/dashboard', {
+      params: {
         days: days.value,
         project: project.value,
         env: env.value
-      } 
+      }
     });
     if (res.success) {
       const d = res.data;
-      statsByAppkey.value    = d.statsByAppkey   || [];
-      trend.value            = d.trend            || [];
-      topErrors.value        = d.topErrors        || [];
+      statsByAppkey.value = d.statsByAppkey || [];
+      trend.value = d.trend || [];
+      topErrors.value = d.topErrors || [];
       typeDistribution.value = d.typeDistribution || {};
-      totalErrors.value      = d.totalErrors      || 0;
-      recentAlarms.value     = d.recentAlarms     || [];
+      totalErrors.value = d.totalErrors || 0;
+      recentAlarms.value = d.recentAlarms || [];
       renderAll();
     }
   } catch (e) {
@@ -245,7 +240,7 @@ const openErrorDetail = async (row) => {
     const res = await request.get(`/errors/${row.id}`);
     if (res.success && res.data) {
       let parsedData = {};
-      try { parsedData = typeof res.data.extra_data === 'string' ? JSON.parse(res.data.extra_data) : (res.data.extra_data || {}); } catch (_) {}
+      try { parsedData = typeof res.data.extra_data === 'string' ? JSON.parse(res.data.extra_data) : (res.data.extra_data || {}); } catch (_) { }
       currentError.value = { ...res.data, parsedData };
       drawerVisible.value = true;
     }
@@ -254,14 +249,14 @@ const openErrorDetail = async (row) => {
 
 // ─── 渲染图表 ────────────────────────────────────────────────────────────────
 const ERROR_COLORS = {
-  javascript:     '#f56c6c',
-  promise:        '#e6a23c',
-  resource:       '#909399',
-  network:        '#409eff',
-  'network-error':'#409eff',
-  white_screen:   '#a855f7',
-  whitepage:      '#a855f7',
-  performance:    '#67c23a',
+  javascript: '#f56c6c',
+  promise: '#e6a23c',
+  resource: '#909399',
+  network: '#409eff',
+  'network-error': '#409eff',
+  white_screen: '#a855f7',
+  whitepage: '#a855f7',
+  performance: '#67c23a',
 };
 const getColor = (type) => ERROR_COLORS[type] || '#67c23a';
 
@@ -304,39 +299,39 @@ const renderTrend = () => {
 
   trendChart.setOption({
     backgroundColor: 'transparent',
-    tooltip: { 
-      trigger: 'axis', 
-      backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
       borderColor: '#e4e7ed',
       borderWidth: 1,
       textStyle: { color: '#303133', fontSize: 13 },
       extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;'
     },
-    legend: { 
-      data: types, 
-      bottom: 0, 
-      textStyle: { color: '#606266', fontSize: 12 }, 
+    legend: {
+      data: types,
+      bottom: 0,
+      textStyle: { color: '#606266', fontSize: 12 },
       icon: 'circle',
       itemGap: 15
     },
-    grid: { 
-      left: 15, 
-      right: 15, 
-      top: 15, 
-      bottom: 60, 
-      containLabel: true 
+    grid: {
+      left: 15,
+      right: 15,
+      top: 15,
+      bottom: 60,
+      containLabel: true
     },
-    xAxis: { 
-      type: 'category', 
-      data: xData, 
-      axisLine: { lineStyle: { color: '#dcdfe6' } }, 
-      axisLabel: { color: '#606266', margin: 10 } 
+    xAxis: {
+      type: 'category',
+      data: xData,
+      axisLine: { lineStyle: { color: '#dcdfe6' } },
+      axisLabel: { color: '#606266', margin: 10 }
     },
-    yAxis: { 
-      type: 'value', 
-      minInterval: 1, 
-      splitLine: { lineStyle: { color: '#f0f2f5', type: 'dashed' } }, 
-      axisLabel: { color: '#606266' } 
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      splitLine: { lineStyle: { color: '#f0f2f5', type: 'dashed' } },
+      axisLabel: { color: '#606266' }
     },
     series
   });
@@ -364,30 +359,34 @@ const renderPie = () => {
       textStyle: { color: '#303133', fontSize: 13 },
       extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;'
     },
-    legend: { 
-      orient: 'vertical', 
-      right: '2%', 
-      top: 'center', 
-      textStyle: { color: '#606266', fontSize: 11 }, 
+    legend: {
+      orient: 'vertical',
+      // 固定右侧宽度，确保饿图不占用饿圈的空间
+      right: 0,
+      top: 'middle',
+      width: 120,
+      textStyle: { color: '#606266', fontSize: 11 },
       icon: 'circle',
-      itemGap: 10,
+      itemGap: 8,
       itemWidth: 8,
       itemHeight: 8,
-      formatter: (name) => name.length > 18 ? name.slice(0, 18) + '…' : name
+      formatter: (name) => name.length > 16 ? name.slice(0, 16) + '…' : name
     },
     series: [{
       type: 'pie',
-      radius: ['42%', '66%'],
-      center: ['30%', '50%'],
+      // 内外径按容器百分比设置，自适应宽高
+      radius: ['38%', '62%'],
+      // center 偏左，为右侧 legend 让出空间
+      center: ['38%', '50%'],
       avoidLabelOverlap: true,
       label: { show: false },
-      emphasis: { 
-        label: { 
-          show: true, 
-          fontSize: 13, 
-          fontWeight: 'bold', 
-          color: '#303133' 
-        } 
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 12,
+          fontWeight: 'bold',
+          color: '#303133'
+        }
       },
       data: data.length ? data : [{ name: '暂无数据', value: 1, itemStyle: { color: '#e4e7ed' } }]
     }]
@@ -428,26 +427,26 @@ const renderBar = () => {
       textStyle: { color: '#303133', fontSize: 13 },
       extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;'
     },
-    legend: { 
-      data: types, 
-      bottom: 0, 
-      textStyle: { color: '#606266', fontSize: 12 }, 
+    legend: {
+      data: types,
+      bottom: 0,
+      textStyle: { color: '#606266', fontSize: 12 },
       icon: 'circle',
       itemGap: 15
     },
-    grid: { 
-      left: 15, 
-      right: 15, 
-      top: 15, 
-      bottom: 80, 
-      containLabel: true 
+    grid: {
+      left: 15,
+      right: 15,
+      top: 15,
+      bottom: 80,
+      containLabel: true
     },
     xAxis: {
       type: 'category',
       data: labels,
-      axisLabel: { 
-        color: '#606266', 
-        rotate: labels.length > 6 ? 25 : 0, 
+      axisLabel: {
+        color: '#606266',
+        rotate: labels.length > 6 ? 25 : 0,
         fontSize: 11,
         margin: 10
       },
@@ -521,6 +520,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .dash-title {
   display: flex;
   align-items: center;
@@ -529,7 +529,11 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: #1f2937;
 }
-.dash-title-icon { font-size: 24px; }
+
+.dash-title-icon {
+  font-size: 24px;
+}
+
 .live-badge {
   font-size: 10px;
   letter-spacing: 1px;
@@ -537,22 +541,46 @@ onBeforeUnmount(() => {
   border: none !important;
   animation: pulse 2s infinite;
 }
+
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
-.dash-controls { display: flex; align-items: center; gap: 8px; }
+
+.dash-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
 /* ─── KPI 卡片行 ─────────────────────────────── */
 .kpi-row {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  /* grid-template-columns: repeat(6, minmax(140px, 1fr)); */
   gap: 16px;
   margin-bottom: 24px;
   min-width: 0;
 }
-@media (max-width: 1400px) { .kpi-row { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
-@media (max-width: 768px)  { .kpi-row { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
+
+@media (max-width: 1400px) {
+  .kpi-row {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
 
 .kpi-card {
   display: flex;
@@ -565,32 +593,79 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: transform .2s, box-shadow .2s;
 }
+
 .kpi-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
-.kpi-icon { font-size: 28px; flex-shrink: 0; }
+
+.kpi-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
 .kpi-value {
   font-size: 24px;
   font-weight: 700;
   line-height: 1.1;
   margin-bottom: 4px;
 }
-.kpi-label { font-size: 12px; color: #606266; font-weight: 500; white-space: nowrap; }
+
+.kpi-label {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+}
 
 /* KPI 颜色主题 */
-.kpi-red    { border-left: 4px solid #f56c6c; }
-.kpi-red    .kpi-value { color: #f56c6c; }
-.kpi-orange { border-left: 4px solid #e6a23c; }
-.kpi-orange .kpi-value { color: #e6a23c; }
-.kpi-purple { border-left: 4px solid #a855f7; }
-.kpi-purple .kpi-value { color: #a855f7; }
-.kpi-blue   { border-left: 4px solid #409eff; }
-.kpi-blue   .kpi-value { color: #409eff; }
-.kpi-green  { border-left: 4px solid #22c55e; }
-.kpi-green  .kpi-value { color: #22c55e; }
-.kpi-yellow { border-left: 4px solid #f59e0b; }
-.kpi-yellow .kpi-value { color: #f59e0b; }
+.kpi-red {
+  border-left: 4px solid #f56c6c;
+}
+
+.kpi-red .kpi-value {
+  color: #f56c6c;
+}
+
+.kpi-orange {
+  border-left: 4px solid #e6a23c;
+}
+
+.kpi-orange .kpi-value {
+  color: #e6a23c;
+}
+
+.kpi-purple {
+  border-left: 4px solid #a855f7;
+}
+
+.kpi-purple .kpi-value {
+  color: #a855f7;
+}
+
+.kpi-blue {
+  border-left: 4px solid #409eff;
+}
+
+.kpi-blue .kpi-value {
+  color: #409eff;
+}
+
+.kpi-green {
+  border-left: 4px solid #22c55e;
+}
+
+.kpi-green .kpi-value {
+  color: #22c55e;
+}
+
+.kpi-yellow {
+  border-left: 4px solid #f59e0b;
+}
+
+.kpi-yellow .kpi-value {
+  color: #f59e0b;
+}
 
 /* ─── 图表行 ─────────────────────────────────── */
 .chart-row {
@@ -599,6 +674,7 @@ onBeforeUnmount(() => {
   margin-bottom: 20px;
   min-width: 0;
 }
+
 .chart-card {
   background: #ffffff;
   border: 1px solid #e4e7ed;
@@ -608,10 +684,27 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow: hidden;
 }
-.chart-main { flex: 2; min-width: 280px; }
-.chart-pie  { flex: 1; min-width: 240px; }
-.chart-bar  { flex: 2; min-width: 280px; }
-.chart-top  { flex: 1; min-width: 240px; }
+
+.chart-main {
+  flex: 2;
+  min-width: 280px;
+}
+
+.chart-pie {
+  /* 保证圆形图+图例有足够空间，避免被截断或文字重叠 */
+  flex: 1;
+  min-width: 300px;
+}
+
+.chart-bar {
+  flex: 2;
+  min-width: 280px;
+}
+
+.chart-top {
+  flex: 1;
+  min-width: 240px;
+}
 
 .chart-card-header {
   display: flex;
@@ -622,16 +715,29 @@ onBeforeUnmount(() => {
   color: #303133;
   margin-bottom: 16px;
 }
+
 .chart-card-sub {
   font-size: 12px;
   color: #909399;
   font-weight: 400;
 }
 
-.chart-area { height: 280px; }
+.chart-area {
+  height: 280px;
+}
+
+/* 环形图卡片的图表区需要更多空间，应对多条图例的场景 */
+.chart-pie .chart-area {
+  height: 300px;
+}
 
 /* ─── Top 错误列表 ────────────────────────────── */
-.top-list { max-height: 280px; overflow-y: auto; padding-right: 4px; }
+.top-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .top-item {
   display: flex;
   align-items: center;
@@ -642,7 +748,11 @@ onBeforeUnmount(() => {
   transition: background .15s, transform .1s;
   border-radius: 6px;
 }
-.top-item:last-child { border-bottom: none; }
+
+.top-item:last-child {
+  border-bottom: none;
+}
+
 .top-item:hover {
   background: #f5f7fa;
   transform: translateX(4px);
@@ -659,12 +769,32 @@ onBeforeUnmount(() => {
   font-weight: 700;
   flex-shrink: 0;
 }
-.rank-gold   { background: #f59e0b; color: #ffffff; }
-.rank-silver { background: #94a3b8; color: #ffffff; }
-.rank-bronze { background: #c2855a; color: #ffffff; }
-.rank-normal { background: #e4e7ed; color: #606266; }
 
-.top-info { flex: 1; min-width: 0; }
+.rank-gold {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.rank-silver {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.rank-bronze {
+  background: #c2855a;
+  color: #ffffff;
+}
+
+.rank-normal {
+  background: #e4e7ed;
+  color: #606266;
+}
+
+.top-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .top-msg {
   font-size: 13px;
   color: #303133;
@@ -674,19 +804,40 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   margin-bottom: 4px;
 }
-.top-meta { display: flex; gap: 4px; }
 
-.top-count { text-align: right; flex-shrink: 0; }
-.count-num { font-size: 18px; font-weight: 700; color: #f56c6c; }
-.count-unit { font-size: 11px; color: #909399; margin-left: 2px; }
+.top-meta {
+  display: flex;
+  gap: 4px;
+}
+
+.top-count {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.count-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f56c6c;
+}
+
+.count-unit {
+  font-size: 11px;
+  color: #909399;
+  margin-left: 2px;
+}
 
 /* ─── 最近告警区块 ────────────────────────────── */
-.alarm-section { margin-top: 8px; }
+.alarm-section {
+  margin-top: 8px;
+}
+
 .alarm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
 }
+
 .alarm-card {
   display: flex;
   gap: 12px;
@@ -697,29 +848,50 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: transform .2s, box-shadow .2s;
 }
+
 .alarm-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
 }
 
-.alarm-l1 { border-left: 4px solid #f56c6c; }
-.alarm-l2 { border-left: 4px solid #e6a23c; }
-.alarm-l3 { border-left: 4px solid #909399; }
+.alarm-l1 {
+  border-left: 4px solid #f56c6c;
+}
+
+.alarm-l2 {
+  border-left: 4px solid #e6a23c;
+}
+
+.alarm-l3 {
+  border-left: 4px solid #909399;
+}
 
 .alarm-card-level {
   font-size: 11px;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(245,108,108,0.15);
+  background: rgba(245, 108, 108, 0.15);
   color: #f56c6c;
   height: fit-content;
   flex-shrink: 0;
 }
-.alarm-l2 .alarm-card-level { background: rgba(230,162,60,0.15); color: #e6a23c; }
-.alarm-l3 .alarm-card-level { background: rgba(144,147,153,0.15); color: #909399; }
 
-.alarm-card-body { flex: 1; min-width: 0; }
+.alarm-l2 .alarm-card-level {
+  background: rgba(230, 162, 60, 0.15);
+  color: #e6a23c;
+}
+
+.alarm-l3 .alarm-card-level {
+  background: rgba(144, 147, 153, 0.15);
+  color: #909399;
+}
+
+.alarm-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
 .alarm-card-msg {
   font-size: 13px;
   color: #303133;
@@ -731,7 +903,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   line-height: 1.4;
 }
-.alarm-card-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+.alarm-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
 .meta-tag {
   font-size: 11px;
   padding: 2px 6px;
@@ -739,12 +918,14 @@ onBeforeUnmount(() => {
   background: #f4f4f5;
   color: #909399;
 }
+
 .key-tag {
   background: #ecf5ff;
   color: #409eff;
   font-family: monospace;
   border: 1px solid #d9ecff;
 }
+
 .time-tag {
   margin-left: auto;
   background: transparent;
@@ -760,7 +941,11 @@ onBeforeUnmount(() => {
   font-weight: 500;
   transition: color 0.15s;
 }
-.view-all-link:hover { color: #66b1ff; text-decoration: none; }
+
+.view-all-link:hover {
+  color: #66b1ff;
+  text-decoration: none;
+}
 
 .empty-tip {
   text-align: center;
@@ -781,11 +966,28 @@ onBeforeUnmount(() => {
   color: #cdd6f4;
   border: 1px solid #313244;
 }
-pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 /* ─── 滚动条 ─────────────────────────────────── */
-.top-list::-webkit-scrollbar { width: 5px; }
-.top-list::-webkit-scrollbar-track { background: transparent; }
-.top-list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
-.top-list::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
+.top-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.top-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.top-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.top-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
 </style>
