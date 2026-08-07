@@ -1,5 +1,14 @@
 # Node.js 后端部署说明
 
+> **当前执行边界（2026-08-07）**：云监控运行在正式环境。生产 MySQL DDL 只能通过数据库工单或人工执行，应用无建表/改表权限；本地不启动前后端、不补装依赖，只做语法检查和 Mock 自测。真实部署与功能验收由用户完成。
+
+## 生产 MySQL 人工变更
+
+- 应用启动不会执行 `后端服务/src/db/schema_mysql.sql`，不得增加自动建表或自动迁移逻辑。
+- 涉及表结构变化时，由交付回复直接提供当前场景所需的最小人工 DDL；除非用户明确要求，不额外创建迁移 SQL 文件。
+- 执行 SQL 后再部署应用；未完成 `daily_reports` 结构变更时，不应启用 AI 日报定时任务。
+- 所有真实数据库与消息验收结果由用户记录；语法检查、Mock 自测和代码评审不能替代生产验收。
+
 ## 安装依赖
 
 在 `前端告警系统v1.0` 目录下执行：
@@ -111,6 +120,22 @@ CORS_ORIGIN=*
 LOG_LEVEL=info
 NODE_ENV=development
 ```
+
+### Vanish 通知配置
+
+AI 巡检日报和实时规则告警可经扶摇 BFF 发送 Vanish 文本消息。正式环境由 b2bpass Secret/环境变量注入：
+
+```env
+FUYAO_VANISH_ALERT_URL=https://dq.10jqka.com.cn/fuyao/wencai_agent_skills/push/v1/send_alert
+VANISH_AK=<由 Secret 平台注入，禁止写入仓库>
+VANISH_ENABLED=true
+VANISH_TIMEOUT_MS=12000
+```
+
+- 前端只配置 `@myhexin.com` 收件账号，不接触 AK。
+- 未配置 URL 或 AK 时，Vanish 渠道会安全跳过，不影响邮件、告警落库和错误上报。
+- 发送失败或超时不自动重试，避免重复告警；日志只记录 requestId 和状态码，不记录 AK、完整 Header 或消息正文。
+- 上线前必须从 b2bpass 正式容器验证正式域名 DNS/TLS/网络，并用正式账号做一次受控人工验收。
 
 ## 生产环境部署
 

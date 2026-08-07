@@ -15,6 +15,7 @@ const DataManagement = () => import('../views/DataManagement.vue');
 const ConfigManagement = () => import('../views/ConfigManagement.vue');
 const SourceMapManager = () => import('../views/SourceMapManager.vue');
 const AppkeyManager = () => import('../views/AppkeyManager.vue');
+const AiDailyReport = () => import('../views/AiDailyReport.vue');
 
 const routes = [
     {
@@ -88,6 +89,12 @@ const routes = [
                 name: 'AppkeyManager',
                 component: AppkeyManager,
                 meta: { title: 'AppKey接入管理', icon: 'Key', requiresAuth: true }
+            },
+            {
+                path: 'ai-daily-report',
+                name: 'AiDailyReport',
+                component: AiDailyReport,
+                meta: { title: 'AI 巡检日报', icon: 'MagicStick', requiresAuth: true }
             }
         ]
     },

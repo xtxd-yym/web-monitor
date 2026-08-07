@@ -40,6 +40,21 @@ class InstanceModel {
         const { id, instance_id, ...updates } = data;
         let targetId = id;
 
+        // 编辑页可能只提交部分进阶配置；合并已有 rules_json，避免保存其他字段时
+        // 意外清空邮件/Vanish 收件人、级别和重复策略。
+        if (updates.rules) {
+            const existing = targetId
+                ? await this.db.getAsync('SELECT rules_json FROM alarm_instances WHERE id = ?', [targetId])
+                : await this.db.getAsync('SELECT rules_json FROM alarm_instances WHERE instance_id = ?', [instance_id]);
+            let existingRules = {};
+            try {
+                existingRules = existing?.rules_json ? JSON.parse(existing.rules_json) : {};
+            } catch (_) {
+                existingRules = {};
+            }
+            updates.rules = { ...existingRules, ...updates.rules };
+        }
+
         // 如果没有 id 但有 instance_id，则通过 instance_id 查找
         // 注意：这里我们假设 instance_id 是唯一的。如果更新需要基于 instance_id 定位记录
 

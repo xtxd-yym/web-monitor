@@ -145,3 +145,22 @@ CREATE TABLE IF NOT EXISTS appkey_registry (
 
 CREATE INDEX IF NOT EXISTS idx_registry_appkey ON appkey_registry(appkey);
 CREATE INDEX IF NOT EXISTS idx_registry_customer ON appkey_registry(customer_name);
+
+-- ============================================
+-- 8. daily_reports 表 - AI 巡检日报记录
+-- ============================================
+CREATE TABLE IF NOT EXISTS daily_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_date TEXT NOT NULL DEFAULT '',
+  stat_json TEXT,
+  ai_summary_json TEXT,
+  recipients TEXT NOT NULL DEFAULT '',
+  email_sent INTEGER NOT NULL DEFAULT 0,
+  vanish_recipients TEXT NOT NULL DEFAULT '',
+  vanish_sent INTEGER NOT NULL DEFAULT 0,
+  trigger_type TEXT NOT NULL DEFAULT 'auto',
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_reports_date ON daily_reports(report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_reports_created_at ON daily_reports(created_at DESC);

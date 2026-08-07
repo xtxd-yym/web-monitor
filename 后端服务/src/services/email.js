@@ -73,6 +73,42 @@ class EmailService {
     }
 
     /**
+     * 发送 AI 巡检日报邮件
+     * @param {string|string[]} to 接收人列表
+     * @param {string} htmlContent 已渲染好的 HTML 内容
+     * @param {string} reportDate 报告日期，如 2026-08-03
+     */
+    async sendDailyReportEmail(to, htmlContent, reportDate) {
+        if (!this.enabled || !this.transporter) {
+            console.warn('[EmailService] 邮件服务未启用，跳过日报发送');
+            return false;
+        }
+        if (!to) {
+            console.warn('[EmailService] 日报收件人为空，跳过发送');
+            return false;
+        }
+
+        const envPrefix = config.env === 'production' ? '' : '【测试环境】';
+        const subject = `${envPrefix}[云监控] AI 巡检日报 · ${reportDate}`;
+
+        const mailOptions = {
+            from: config.email.from,
+            to: Array.isArray(to) ? to.join(',') : to,
+            subject,
+            html: htmlContent
+        };
+
+        try {
+            const info = await this.transporter.sendMail(mailOptions);
+            console.log(`[EmailService] 日报邮件发送成功: ${info.messageId}`);
+            return true;
+        } catch (error) {
+            console.error('[EmailService] 日报邮件发送失败:', error);
+            return false;
+        }
+    }
+
+    /**
      * 构建 HTML 邮件模板
      */
     buildHtmlTemplate(data) {

@@ -78,7 +78,8 @@ class ConfigModel {
         const { appkey, customer_name, project, env } = params;
 
         try {
-            let whereConditions = [];
+            // 固定排除系统内部配置（如 AI 日报收件人），不暴露给业务列表
+            let whereConditions = ["appkey != '__system__'"];
             let queryParams = [];
 
             if (appkey) {
@@ -164,6 +165,56 @@ class ConfigModel {
         // 新表结构没有 is_active 字段，此方法暂时不做实际操作
         console.warn(`[ConfigModel] enable(${id}) called but is_active field not in schema`);
         return true;
+    }
+
+    /**
+     * 读取系统全局配置（key-value 存储，appkey='__system__'）
+     * @param {string} key 配置键，如 'ai_daily_report_recipients'
+     */
+    async getSystemConfig(key) {
+        try {
+            const row = await this.db.getAsync(
+                "SELECT config_json FROM monitor_configs WHERE appkey = '__system__' AND customer_name = ? LIMIT 1",
+                [key]
+            );
+            if (!row) return null;
+            try { return JSON.parse(row.config_json); } catch (_) { return row.config_json; }
+        } catch (err) {
+            console.error('[ConfigModel] 读取系统配置失败:', err);
+            return null;
+        }
+    }
+
+    /**
+     * 写入/更新系统全局配置
+     * @param {string} key   配置键
+     * @param {*}      value 配置值（对象或字符串，自动 JSON 序列化）
+     */
+    async setSystemConfig(key, value) {
+        const now = Date.now();
+        const jsonVal = typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value);
+        try {
+            const existing = await this.db.getAsync(
+                "SELECT id FROM monitor_configs WHERE appkey = '__system__' AND customer_name = ? LIMIT 1",
+                [key]
+            );
+            if (existing) {
+                await this.db.runAsync(
+                    "UPDATE monitor_configs SET config_json = ?, updated_at = ? WHERE id = ?",
+                    [jsonVal, now, existing.id]
+                );
+                return { updated: true };
+            } else {
+                const result = await this.db.runAsync(
+                    "INSERT INTO monitor_configs (appkey, customer_name, project, env, config_json, updated_at, updated_by) VALUES ('__system__', ?, '', 'production', ?, ?, 'system')",
+                    [key, jsonVal, now]
+                );
+                return { updated: false, id: result.lastID };
+            }
+        } catch (err) {
+            console.error('[ConfigModel] 写入系统配置失败:', err);
+            throw err;
+        }
     }
 }
 

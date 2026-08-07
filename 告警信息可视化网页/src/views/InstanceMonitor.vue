@@ -162,6 +162,17 @@
           <el-form-item label="应急输出">
             <el-input v-model="editForm.output" placeholder="告警触发时的异常描述" />
           </el-form-item>
+          <el-form-item label="Vanish 告警">
+            <el-switch v-model="editForm.vanish_enabled" active-text="启用" inactive-text="关闭" />
+          </el-form-item>
+          <el-form-item v-if="editForm.vanish_enabled" label="Vanish 账号">
+            <el-input
+              v-model="editForm.vanish_notice_person"
+              type="textarea"
+              :rows="2"
+              placeholder="请输入 @myhexin.com 账号，多个用逗号或换行分隔"
+            />
+          </el-form-item>
           <el-form-item label="进阶配置">
             <pre class="rules-json-preview">{{ formatRulesJson(currentItem.rules_json) }}</pre>
           </el-form-item>
@@ -201,6 +212,8 @@ const editForm = reactive({
   threshold: 0,
   time_frame: 300,
   output: '',
+  vanish_enabled: false,
+  vanish_notice_person: '',
   description: ''
 });
 
@@ -249,9 +262,13 @@ const showDetail = (row) => {
     try {
         const rules = row.rules_json ? JSON.parse(row.rules_json) : {};
         editForm.output = rules.output || '';
+        editForm.vanish_enabled = rules.vanish_enabled === true;
+        editForm.vanish_notice_person = rules.vanish_notice_person || '';
         editForm.description = rules.description || '';
     } catch (e) {
         editForm.output = '';
+        editForm.vanish_enabled = false;
+        editForm.vanish_notice_person = '';
         editForm.description = '';
     }
     drawerVisible.value = true;
@@ -272,6 +289,14 @@ const saveEdit = async () => {
     }
     saveLoading.value = true;
     try {
+        if (editForm.vanish_enabled) {
+            const recipients = editForm.vanish_notice_person.split(/[,，\n;]/).map(item => item.trim()).filter(Boolean);
+            const invalid = recipients.find(item => !/^[^\s,@]+@myhexin\.com$/i.test(item));
+            if (recipients.length === 0 || invalid) {
+                ElMessage.error(invalid ? `Vanish 账号格式错误：${invalid}` : '请填写 Vanish 账号');
+                return;
+            }
+        }
         const res = await request.post('/instance/update', {
             instance_id: currentItem.value.instance_id,
             instance_name: editForm.instance_name,
@@ -279,6 +304,8 @@ const saveEdit = async () => {
             threshold: editForm.threshold,
             time_frame: editForm.time_frame,
             output: editForm.output,
+            vanish_enabled: editForm.vanish_enabled,
+            vanish_notice_person: editForm.vanish_notice_person,
             description: editForm.description
         });
         if (res.code === 1 || res.success) {

@@ -1,4 +1,10 @@
 -- ===========================================
+-- 注意：生产 MySQL 仅允许数据库工单/人工执行 DDL。
+-- 应用启动不会执行本文件，也不得在代码中增加自动建表或自动迁移逻辑。
+-- 具体变更命令由交付回复直接提供，不额外创建迁移 SQL 文件。
+-- ===========================================
+
+-- ===========================================
 -- 云监控系统 MySQL 建表脚本 (符合公司规范版 v3)
 -- 生成时间: 2026-02-03
 -- ===========================================
@@ -135,3 +141,25 @@ CREATE TABLE IF NOT EXISTS `appkey_registry` (
 -- ===========================================
 -- 执行完毕！共 7 张表
 -- ===========================================
+
+-- ===========================================
+-- 8. AI 巡检日报记录表（2026-08 新增）
+-- ===========================================
+-- AI 巡检日报记录表（2026-08 新增）
+-- 所属数据库：monitor_system（即后端服务连接的业务库）
+
+CREATE TABLE IF NOT EXISTS `daily_reports` (
+  `id`              INT UNSIGNED NOT NULL AUTO_INCREMENT  COMMENT '主键ID',
+  `report_date`     VARCHAR(10)   NOT NULL DEFAULT ''     COMMENT '报告日期 YYYY-MM-DD',
+  `stat_json`       LONGTEXT      NOT NULL                COMMENT '原始统计数据(JSON)',
+  `ai_summary_json` LONGTEXT      NOT NULL                COMMENT 'AI生成的结构化摘要(JSON)',
+  `recipients`      VARCHAR(4096) NOT NULL DEFAULT ''     COMMENT '发送收件人列表(逗号分隔)',
+  `email_sent`      TINYINT(1)    NOT NULL DEFAULT 0      COMMENT '邮件是否发送成功: 0否 1是',
+  `vanish_recipients` VARCHAR(4096) NOT NULL DEFAULT ''   COMMENT 'Vanish收件账号列表(逗号分隔)',
+  `vanish_sent`     TINYINT(1)    NOT NULL DEFAULT 0      COMMENT 'Vanish是否发送成功: 0否 1是',
+  `trigger_type`    VARCHAR(20)   NOT NULL DEFAULT 'auto' COMMENT '触发方式: auto/manual',
+  `created_at`      BIGINT        NOT NULL DEFAULT 0      COMMENT '创建时间戳(毫秒)',
+  PRIMARY KEY (`id`),
+  KEY `idx_report_date` (`report_date`),
+  KEY `idx_created_at` (`created_at`)
+) DEFAULT CHARSET=utf8mb4 COMMENT='AI巡检日报记录表';

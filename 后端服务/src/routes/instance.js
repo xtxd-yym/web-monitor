@@ -1,5 +1,15 @@
 
 const express = require('express');
+const vanishService = require('../services/vanish');
+
+function validateNotificationRules(rules) {
+    if (rules.vanish_enabled !== undefined && typeof rules.vanish_enabled !== 'boolean') {
+        throw new Error('vanish_enabled 必须为布尔值');
+    }
+    if (rules.vanish_enabled === true) {
+        vanishService.validateRecipients(rules.vanish_notice_person);
+    }
+}
 
 module.exports = (instanceModel) => {
     const router = express.Router();
@@ -24,6 +34,7 @@ module.exports = (instanceModel) => {
                 rules
             };
 
+            validateNotificationRules(rules);
             await instanceModel.add(data);
             res.json(success(null));
         } catch (e) {
@@ -48,6 +59,7 @@ module.exports = (instanceModel) => {
                 rules
             };
 
+            validateNotificationRules(rules);
             await instanceModel.update(data);
             res.json(success(null));
         } catch (e) {

@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const vanishService = require('../services/vanish');
 const router = express.Router();
 
 
@@ -250,6 +251,13 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                                     const emailService = require('../services/email');
                                     emailService.sendAlarmEmail(ruleConfig.notice_person, alarmRecord).catch(err => {
                                         console.error('[Alarm] 发送告警邮件失败:', err);
+                                    });
+                                }
+
+                                // Vanish 与邮件并行作为独立通知渠道；失败不影响错误上报和告警落库。
+                                if (ruleConfig.vanish_enabled === true && ruleConfig.vanish_notice_person) {
+                                    vanishService.sendAlarm(ruleConfig.vanish_notice_person, alarmRecord).catch(err => {
+                                        console.error('[Alarm] 发送 Vanish 告警失败:', err.message);
                                     });
                                 }
                             }

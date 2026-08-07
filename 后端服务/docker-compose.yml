@@ -16,6 +16,9 @@ services:
       - DB_USER=root
       - DB_PASSWORD=root
       - DB_NAME=monitor_system
+      # Vanish 正式环境请改由容器 Secret 注入；本地默认不配置即自动跳过。
+      - FUYAO_VANISH_ALERT_URL=${FUYAO_VANISH_ALERT_URL:-}
+      - VANISH_AK=${VANISH_AK:-}
     depends_on:
       - mysql-db
     volumes:

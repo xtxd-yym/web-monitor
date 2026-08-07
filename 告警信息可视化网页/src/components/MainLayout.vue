@@ -51,6 +51,10 @@
           <el-icon><Key /></el-icon>
           <span>AppKey管理</span>
         </el-menu-item>
+        <el-menu-item index="/console/ai-daily-report">
+          <el-icon><MagicStick /></el-icon>
+          <span>AI 巡检日报</span>
+        </el-menu-item>
         <el-menu-item index="/">
            <el-icon><HomeFilled /></el-icon>
            <span>返回首页</span>

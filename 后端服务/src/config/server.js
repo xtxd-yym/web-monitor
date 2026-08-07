@@ -83,6 +83,15 @@ module.exports = {
         from: process.env.SMTP_FROM || '云监控告警系统 <your-smtp-user@example.com>'
     },
 
+    // Vanish 消息发送（经扶摇 send_alert BFF）
+    // 正式环境必须由 b2bpass Secret/环境变量注入 URL 与 AK，禁止写入代码或日志。
+    vanish: {
+        enabled: process.env.VANISH_ENABLED !== 'false',
+        url: process.env.FUYAO_VANISH_ALERT_URL || '',
+        ak: process.env.VANISH_AK || '',
+        timeoutMs: Math.min(Math.max(parseInt(process.env.VANISH_TIMEOUT_MS || '12000') || 12000, 1000), 30000)
+    },
+
     // 管理员鉴权配置
     auth: {
         username: process.env.ADMIN_USER || 'admin',

@@ -7,7 +7,8 @@
         "start": "node index.js",
         "dev": "node index.js",
         "build": "echo 'No build step for Node.js backend' && exit 0",
-        "setup": "node scripts/setup-sourcemap.js"
+        "setup": "node scripts/setup-sourcemap.js",
+        "test": "node --test test/*.test.js"
     },
     "keywords": [
         "monitor",

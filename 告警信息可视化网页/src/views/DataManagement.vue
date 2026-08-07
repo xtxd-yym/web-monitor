@@ -172,6 +172,24 @@
                   <el-input v-model="formData.notice_person" placeholder="请输入告警邮箱，多个用逗号分隔" />
                 </el-form-item>
               </el-col>
+              <el-col :span="12">
+                <el-form-item label="Vanish 告警">
+                  <el-switch v-model="formData.vanish_enabled" active-text="启用" inactive-text="关闭" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="24" v-if="formData.vanish_enabled">
+                <el-form-item label="Vanish 账号" required>
+                  <el-input
+                    v-model="formData.vanish_notice_person"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="请输入 @myhexin.com 账号，多个用逗号或换行分隔"
+                  />
+                  <div class="vanish-config-hint">
+                    消息包含级别、规则、项目/环境、组件、客户、错误摘要和触发时间，不发送完整堆栈。正式 URL 与 AK 仅由后端环境变量注入。
+                  </div>
+                </el-form-item>
+              </el-col>
                <el-col :span="24">
                 <el-form-item label="描述">
                   <el-input v-model="formData.description" type="textarea" :rows="2" placeholder="请输入实例描述" />
@@ -261,6 +279,8 @@ const formData = reactive({
   repeat_count: 1,
   repeat_interval: 3600,
   notice_person: '',
+  vanish_enabled: false,
+  vanish_notice_person: '',
   notice_way: '1'
 });
 
@@ -290,7 +310,7 @@ const hasField = (field) => {
 const resetForm = () => {
     Object.keys(formData).forEach(key => {
         if (typeof formData[key] === 'boolean') {
-            formData[key] = true;
+            formData[key] = key === 'vanish_enabled' ? false : true;
         } else if (typeof formData[key] === 'number') {
            formData[key] = key === 'threshold' ? 0 : (key === 'time_frame' ? 300 : (key === 'repeat_interval' ? 3600 : 1));
         } else {
@@ -445,6 +465,21 @@ const validateForm = () => {
                      return false;
                  }
              }
+             if (formData.vanish_enabled) {
+                 const vanishRecipients = formData.vanish_notice_person
+                     .split(/[,，\n;]/)
+                     .map(item => item.trim())
+                     .filter(Boolean);
+                 if (vanishRecipients.length === 0) {
+                     ElMessage.warning('启用 Vanish 告警后必须填写 Vanish 账号');
+                     return false;
+                 }
+                 const invalid = vanishRecipients.find(item => !/^[^\s,@]+@myhexin\.com$/i.test(item));
+                 if (invalid) {
+                     ElMessage.error(`Vanish 账号必须是 @myhexin.com 邮箱：${invalid}`);
+                     return false;
+                 }
+             }
              // 校验关联指标 ID 是否来自已有指标列表
              if (indexOptions.value.length > 0) {
                  const validIndexIds = indexOptions.value.map(i => i.index_code);
@@ -500,6 +535,8 @@ const submitForm = async () => {
                 repeat_count: formData.repeat_count,
                 repeat_interval: formData.repeat_interval,
                 notice_person: formData.notice_person,
+                vanish_enabled: formData.vanish_enabled,
+                vanish_notice_person: formData.vanish_notice_person,
                 notice_way: formData.notice_way,
                 description: formData.description
             };
@@ -597,5 +634,11 @@ const submitForm = async () => {
   font-size: 12px;
   color: #e6a23c;
   margin-top: 4px;
+}
+
+.vanish-config-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
 }
 </style>

@@ -19,10 +19,13 @@ const IndexModel = require('./db/models/index');
 const InstanceModel = require('./db/models/instance');
 const AlarmModel = require('./db/models/alarm');
 const AppkeyModel = require('./db/models/appkey');
+const DailyReportModel = require('./db/models/dailyReport');
 
 // 导入服务
 const SourceMapService    = require('./services/sourcemap');
 const OssSourceMapService = require('./services/sourcemapOss');
+const AiDailyReportService = require('./services/aiDailyReport');
+const vanishService = require('./services/vanish');
 
 // 导入路由
 const createErrorRoutes = require('./routes/errors');
@@ -33,6 +36,7 @@ const createInstanceRoutes = require('./routes/instance');
 const createAlarmRoutes = require('./routes/alarm');
 const createAppkeyRoutes = require('./routes/appkey');
 const createAiRoutes = require('./routes/ai');
+const createAiDailyReportRoutes = require('./routes/aiDailyReport');
 const authRoutes = require('./routes/auth');
 const authMiddleware = require('./middleware/authMiddleware');
 
@@ -71,6 +75,7 @@ class MonitorServer {
         this.models.instance = new InstanceModel(this.db);
         this.models.alarm = new AlarmModel(this.db);
         this.models.appkey = new AppkeyModel(this.db);
+        this.models.dailyReport = new DailyReportModel(this.db);
     }
 
     /**
@@ -102,6 +107,7 @@ class MonitorServer {
                 this.models.instance = new InstanceModel(this.db);
                 this.models.alarm = new AlarmModel(this.db);
                 this.models.appkey = new AppkeyModel(this.db);
+                this.models.dailyReport = new DailyReportModel(this.db);
 
                 console.log('✅ 数据库重连成功，所有服务已恢复！');
                 clearInterval(this._reconnectTimer);
@@ -173,6 +179,20 @@ class MonitorServer {
         this.app.use('/api/sourcemap', createSourceMapRoutes(this.services.sourcemap));
         this.app.use('/api/appkey', createAppkeyRoutes(this.models.appkey));
         this.app.use('/api/ai', createAiRoutes());
+
+        // AI 巡检日报
+        this.services.aiDailyReport = new AiDailyReportService(
+            this.models.error,
+            this.models.config,
+            this.models.dailyReport,
+            { vanishService }
+        );
+        this.app.use('/api/ai-daily-report', createAiDailyReportRoutes(
+            this.models.dailyReport,
+            this.models.config,
+            this.services.aiDailyReport,
+            vanishService
+        ));
 
         // 指标和实例路由
         this.app.use('/api/index', createIndexRoutes(this.models.index));
@@ -345,6 +365,28 @@ class MonitorServer {
     }
 
     /**
+     * AI 巡检日报定时调度
+     * 每 60 秒检查一次：若当前为上海时间 09:00 且今日 auto 记录未生成，则触发
+     */
+    scheduleDailyReport() {
+        if (this._dailyReportCron) return;
+        console.log('🤖 AI 巡检日报 Cron 已启动（每天 09:00 上海时间自动触发）');
+
+        this._dailyReportCron = setInterval(async () => {
+            try {
+                const nowStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' });
+                const now = new Date(nowStr);
+                if (now.getHours() !== 9 || now.getMinutes() !== 0) return;
+
+                console.log('[AiDailyReport Cron] 触发每日 09:00 自动巡检日报...');
+                await this.services.aiDailyReport.generateReport({ triggerType: 'auto' });
+            } catch (err) {
+                console.error('[AiDailyReport Cron] 定时任务执行失败:', err.message);
+            }
+        }, 60 * 1000);
+    }
+
+    /**
      * 启动服务器
      */
     async start() {
@@ -393,12 +435,22 @@ class MonitorServer {
                 console.log('--- 兼容接口 ---');
                 console.log('  POST   /wczj/alarm/report          - 老SDK上报');
                 console.log('  GET    /wczj/monitor/config        - 老SDK配置');
+                console.log('--- AI 巡检日报 ---');
+                console.log('  POST   /api/ai-daily-report/trigger   - 手动触发日报');
+                console.log('  GET    /api/ai-daily-report/list      - 历史日报列表');
+                console.log('  GET    /api/ai-daily-report/:id       - 日报详情');
+                console.log('  GET    /api/ai-daily-report/recipients- 读取收件人');
+                console.log('  POST   /api/ai-daily-report/recipients- 更新收件人');
                 console.log('='.repeat(50));
             });
+
+            // 启动 AI 巡检日报 Cron（每 60 秒检查一次，09:00 上海时间自动触发）
+            this.scheduleDailyReport();
 
             // 优雅关闭
             process.on('SIGINT', () => {
                 console.log('\n正在关闭服务器...');
+                if (this._dailyReportCron) clearInterval(this._dailyReportCron);
                 if (this.db) {
                     this.db.close();
                 }
