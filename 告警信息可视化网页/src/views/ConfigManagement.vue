@@ -159,6 +159,8 @@ const configHelpItems = [
   { key: 'config.samplingRates.promise', type: 'number', default: '1.0', desc: 'Promise 拒绝采样率' },
   { key: 'config.samplingRates.resource', type: 'number', default: '0.5', desc: '资源错误采样率' },
   { key: 'config.samplingRates.network', type: 'number', default: '0.3', desc: '网络错误采样率' },
+  { key: 'config.ignoreResourceUrls', type: 'string[]', default: '[]', desc: '精准忽略资源 URL；字符串按 URL 片段匹配，仅填写已确认无须处理的资源' },
+  { key: 'config.ignoreNetworkUrls', type: 'string[]', default: '[]', desc: '精准忽略网络 URL；字符串按 URL 片段匹配，仅填写已确认无须处理的接口' },
   // grayControl.*
   { key: 'grayControl.enabled', type: 'boolean', default: 'false', desc: '是否开启灰度发布，可按比例/用户列表渐进接入' },
   { key: 'grayControl.strategy', type: 'string', default: '"percentage"', desc: '灰度策略：percentage（比例）/ whitelist（白名单）' },
@@ -252,6 +254,8 @@ const showAddDialog = () => {
           resource: 0.5,
           network: 0.3
         },
+        ignoreResourceUrls: [],
+        ignoreNetworkUrls: [],
         maxErrorsPerMinute: 100,
         dedupeWindow: 300,
         logLevel: 'warn'

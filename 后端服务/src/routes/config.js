@@ -273,6 +273,8 @@ function getDefaultConfig() {
                 resource: 0.5,
                 network: 0.3
             },
+            ignoreResourceUrls: [],
+            ignoreNetworkUrls: [],
             maxErrorsPerMinute: 100,
             dedupeWindow: 300,
             logLevel: 'warn'

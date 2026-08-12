@@ -47,6 +47,11 @@ module.exports = {
         dir: process.env.SOURCEMAP_DIR || './sourcemaps'
     },
 
+    // 共享监控 SDK 静态资源目录（由 SDK 的 release:backend 脚本生成）
+    sdk: {
+        assetDir: process.env.SDK_ASSET_DIR || './public/monitor-sdk'
+    },
+
     // OSS 配置（S3 兼容协议，用于 SourceMap 文件持久化存储）
     // 部署时在容器平台「配置管理」中设置以下环境变量：
     //   OSS_ENDPOINT, OSS_ACCESS_KEY, OSS_SECRET_KEY, OSS_BUCKET

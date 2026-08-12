@@ -1,14 +1,17 @@
 {
   "name": "web-monitor-system",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "完善的Web项目监控系统",
   "main": "src/server/server.js",
   "scripts": {
     "start": "node src/server/server.js",
     "dev": "nodemon src/server/server.js",
-    "build": "webpack --mode=production && npm run copy-sourcemap",
+    "build": "webpack --mode=production && npm run copy-sourcemap && npm run prepare:release",
     "copy-sourcemap": "node scripts/copy-sourcemap.js",
-    "test": "jest"
+    "prepare:release": "node scripts/prepare-sdk-release.js",
+    "release:backend": "node scripts/prepare-sdk-release.js --output ../后端服务/public/monitor-sdk",
+    "test": "jest",
+    "test:config": "node --experimental-vm-modules --test test/sdk-config.test.cjs test/sdk-runtime.test.cjs test/sdk-loader.test.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

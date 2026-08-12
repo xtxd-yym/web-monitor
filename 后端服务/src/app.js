@@ -151,7 +151,20 @@ class MonitorServer {
         this.app.use(express.json({ limit: '10mb' }));
         this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-        // 静态文件服务
+        // 共享 SDK 静态文件：版本文件长期缓存，Loader/Manifest 每次协商更新。
+        const sdkAssetDir = path.resolve(__dirname, '..', serverConfig.sdk.assetDir);
+        this.app.use('/monitor-sdk', express.static(sdkAssetDir, {
+            setHeaders: (res, filePath) => {
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                if (filePath.endsWith('sdk-manifest.json') || filePath.endsWith('monitor-loader.js')) {
+                    res.setHeader('Cache-Control', 'no-cache');
+                } else {
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                }
+            }
+        }));
+
+        // 旧静态文件服务（保持现有行为）
         this.app.use(express.static(path.join(__dirname, '../../')));
 
         // 请求日志

@@ -1,3 +1,5 @@
+import { resolveDeduplicationWindow } from '../config-utils.js';
+
 /**
  * WebMonitor 核心模块
  * 包含WebMonitor类的基本结构和通用方法
@@ -56,10 +58,17 @@ class WebMonitor {
       // === 原有配置 ===
       // 是否启用错误监控
       enableErrorMonitoring: true,
+      // 是否启用 Promise 未处理拒绝监控
+      enablePromiseRejection: true,
+      // 是否启用资源加载错误监控
+      enableResourceErrors: true,
       // 是否启用性能监控
       enablePerformanceMonitoring: true,
       // 是否启用网络监控
       enableNetworkMonitoring: true,
+      // 是否启用 XMLHttpRequest / Fetch 监控
+      enableXHRMonitoring: true,
+      enableFetchMonitoring: true,
       // 是否启用用户行为追踪
       enableUserTracking: true,
       // 是否启用白屏检测
@@ -85,11 +94,16 @@ class WebMonitor {
       // 忽略的错误
       ignoreErrors: [],
       // 忽略的资源
-      ignoreResources: []
+      ignoreResources: [],
+      // 按 URL 精准忽略已确认无须处理的资源/网络请求（支持字符串片段；本地配置兼容 RegExp）
+      ignoreResourceUrls: [],
+      ignoreNetworkUrls: []
     };
 
     // 合并用户配置
     Object.assign(this.options, options);
+    // 管理端 dedupeWindow 使用秒；代码级 deduplicationWindow 使用毫秒并保持兼容。
+    this.options.deduplicationWindow = resolveDeduplicationWindow(options);
 
     // 错误队列
     this.errorQueue = [];
@@ -123,7 +137,10 @@ class WebMonitor {
       this.setupPerformanceCapture();
     }
 
-    if (this.options.enableNetworkMonitoring) {
+    if (
+      this.options.enableNetworkMonitoring &&
+      (this.options.enableXHRMonitoring || this.options.enableFetchMonitoring)
+    ) {
       this.setupNetworkMonitoring();
     }
 
@@ -242,13 +259,7 @@ class WebMonitor {
     // 清理错误监控事件监听器
     if (this.errorHandlers) {
       this.errorHandlers.forEach(handler => {
-        if (handler.length === 2) {
-          // 性能监控事件
-          window.removeEventListener(...handler);
-        } else {
-          // 错误监控事件
-          window.removeEventListener(handler[0], handler[1], true);
-        }
+        window.removeEventListener(...handler);
       });
     }
 

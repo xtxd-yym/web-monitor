@@ -10,6 +10,10 @@ node_modules.zip
 dist/
 build/
 
+# 共享 SDK 发布产物由构建脚本生成，并随后端镜像发布
+后端服务/public/monitor-sdk/*
+!后端服务/public/monitor-sdk/README.md
+
 # ===========================
 # 数据库文件（本地 SQLite，不应提交）
 # ===========================

@@ -5,6 +5,7 @@
 
 import { sanitizeError } from '../../utils/sanitizer.js';
 import { isLocalEnv } from '../../utils/env.js';
+import { isErrorTypeEnabled, isUrlIgnored, resolveSamplingRate } from '../config-utils.js';
 
 /**
  * 生成错误指纹
@@ -149,7 +150,7 @@ export function setupErrorCapture(monitor) {
 
   // 初始化限流器
   monitor.rateLimiter = new RateLimiter(
-    monitor.options.maxErrorsPerMinute || 100
+    monitor.options.maxErrorsPerMinute ?? 100
   );
 
   // 定期清理过期的去重记录（每10分钟）
@@ -253,9 +254,11 @@ export function setupErrorCapture(monitor) {
       // 检查是否在忽略列表中
       const resourceUrl = event.target.src || event.target.href;
 
-      if (monitor.options.ignoreResources.some(ignore =>
-        typeof ignore === 'string' ? resourceUrl.includes(ignore) : ignore.test(resourceUrl)
-      )) {
+      const ignorePatterns = [
+        ...(monitor.options.ignoreResources || []),
+        ...(monitor.options.ignoreResourceUrls || [])
+      ];
+      if (isUrlIgnored(resourceUrl, ignorePatterns)) {
         return;
       }
 
@@ -271,11 +274,17 @@ export function setupErrorCapture(monitor) {
   };
 
   window.addEventListener('error', errorHandler, true);
-  window.addEventListener('unhandledrejection', unhandledRejectionHandler);
-  window.addEventListener('error', resourceErrorHandler, true);
+  monitor.errorHandlers.push(['error', errorHandler, true]);
 
-  // 保存事件处理函数引用用于清理
-  monitor.errorHandlers = [errorHandler, unhandledRejectionHandler, resourceErrorHandler];
+  if (isErrorTypeEnabled(monitor.options, 'promise')) {
+    window.addEventListener('unhandledrejection', unhandledRejectionHandler);
+    monitor.errorHandlers.push(['unhandledrejection', unhandledRejectionHandler]);
+  }
+
+  if (isErrorTypeEnabled(monitor.options, 'resource')) {
+    window.addEventListener('error', resourceErrorHandler, true);
+    monitor.errorHandlers.push(['error', resourceErrorHandler, true]);
+  }
 }
 
 /**
@@ -284,6 +293,11 @@ export function setupErrorCapture(monitor) {
  * @param {Object} error - 错误对象
  */
 export function captureError(monitor, error) {
+  // === Step 0: 类型开关检查 ===
+  if (!isErrorTypeEnabled(monitor.options, error.type || 'unknown')) {
+    return;
+  }
+
   // === Step 0: 限流检查 ===
   if (!monitor.rateLimiter.tryAcquire()) {
     console.warn('[Monitor] Rate limit exceeded, error dropped:', error.type, error.message);
@@ -300,7 +314,7 @@ export function captureError(monitor, error) {
   // === Step 2: 错误去重检查 ===
   const fingerprint = generateErrorFingerprint(error);
   const now = Date.now();
-  const windowTime = monitor.options.deduplicationWindow || 5 * 60 * 1000; // 默认5分钟
+  const windowTime = monitor.options.deduplicationWindow ?? 5 * 60 * 1000; // 默认5分钟
 
   if (!monitor.errorDeduplication[fingerprint]) {
     // 首次出现该错误
@@ -333,9 +347,11 @@ export function captureError(monitor, error) {
   }
 
   // === Step 3: 采样检查 ===
-  const samplingRate = monitor.options.samplingRates?.[error.type] ||
-    monitor.options.defaultSamplingRate ||
-    1.0; // 默认100%采样
+  const samplingRate = resolveSamplingRate(
+    monitor.options.samplingRates,
+    error.type,
+    monitor.options.defaultSamplingRate
+  );
 
   if (Math.random() > samplingRate) {
     console.log('[Monitor] Error not sampled (rate: ' + (samplingRate * 100) + '%):', error.type, error.message);
@@ -553,6 +569,7 @@ export async function reportErrors(monitor, errorType) {
     // 构建新的上报数据格式
     const reportData = {
       appkey: monitor.options.apiParams.appKey || '',
+      sdkVersion: typeof __SDK_VERSION__ !== 'undefined' ? __SDK_VERSION__ : 'development',
       list: errorsToReport.map(error => ({
         customer_name: monitor.options.apiParams.customer_name || '',
         service_name: monitor.options.apiParams.service_name || '',

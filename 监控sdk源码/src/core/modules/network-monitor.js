@@ -3,27 +3,33 @@
  * 包含网络请求监控的相关功能
  */
 
+import { isUrlIgnored } from '../config-utils.js';
+
 /**
  * 设置网络监控
  * @param {Object} monitor - WebMonitor实例
  */
 export function setupNetworkMonitoring(monitor) {
-  // 保存原始的XMLHttpRequest和fetch方法
-  monitor.originalXhrOpen = XMLHttpRequest.prototype.open;
-  monitor.originalXhrSend = XMLHttpRequest.prototype.send;
-  monitor.originalFetch = window.fetch;
+  if (monitor.options.enableXHRMonitoring !== false) {
+    // 保存并拦截 XMLHttpRequest。
+    monitor.originalXhrOpen = XMLHttpRequest.prototype.open;
+    monitor.originalXhrSend = XMLHttpRequest.prototype.send;
 
-  // 拦截XMLHttpRequest.open方法
-  XMLHttpRequest.prototype.open = function (method, url, async = true, user, password) {
-    this._monitorMethod = method;
-    this._monitorUrl = url;
-    return monitor.originalXhrOpen.call(this, method, url, async, user, password);
-  };
+    // 拦截XMLHttpRequest.open方法
+    XMLHttpRequest.prototype.open = function (method, url, async = true, user, password) {
+      this._monitorMethod = method;
+      this._monitorUrl = url;
+      return monitor.originalXhrOpen.call(this, method, url, async, user, password);
+    };
 
-  // 拦截XMLHttpRequest.send方法
-  XMLHttpRequest.prototype.send = function (body) {
-    const startTime = Date.now();
-    const xhr = this;
+    // 拦截XMLHttpRequest.send方法
+    XMLHttpRequest.prototype.send = function (body) {
+      const xhr = this;
+      if (isUrlIgnored(xhr._monitorUrl, monitor.options.ignoreNetworkUrls)) {
+        return monitor.originalXhrSend.call(this, body);
+      }
+
+      const startTime = Date.now();
 
     // 标记是否已经上报过错误（避免重复上报）
     let errorReported = false;
@@ -208,14 +214,21 @@ export function setupNetworkMonitoring(monitor) {
     this.addEventListener('abort', onAbort);           // 🆕 中止
 
     // 调用原始的send方法
-    return monitor.originalXhrSend.call(this, body);
-  };
+      return monitor.originalXhrSend.call(this, body);
+    };
+  }
 
-  // 拦截fetch API
-  window.fetch = function (...args) {
-    const startTime = Date.now();
-    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
-    const options = typeof args[1] === 'object' ? args[1] : {};
+  if (monitor.options.enableFetchMonitoring !== false && typeof window.fetch === 'function') {
+    // 保存并拦截 fetch API。
+    monitor.originalFetch = window.fetch;
+    window.fetch = function (...args) {
+      const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+      if (isUrlIgnored(url, monitor.options.ignoreNetworkUrls)) {
+        return monitor.originalFetch.apply(this, args);
+      }
+
+      const startTime = Date.now();
+      const options = typeof args[1] === 'object' ? args[1] : {};
 
     return monitor.originalFetch.apply(this, args).then(response => {
       const duration = Date.now() - startTime;
@@ -287,5 +300,6 @@ export function setupNetworkMonitoring(monitor) {
       // 重新抛出错误，确保业务代码能捕获到 (User App Logic Safety)
       throw error;
     });
-  };
+    };
+  }
 }
