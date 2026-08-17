@@ -548,7 +548,7 @@ const submitForm = async () => {
 
         const res = await request.post(url, payload);
 
-        if (res.success || res.code === 1) { // 兼容 res.success (axios拦截器) 和 res.code (后端返回)
+        if (res.success || res.code === 1) { // 兼容 res.success 和后端历史接口返回的 res.code
             resultDialog.title = '操作成功';
             resultDialog.message = '操作执行成功';
             resultDialog.icon = 'SuccessFilled';

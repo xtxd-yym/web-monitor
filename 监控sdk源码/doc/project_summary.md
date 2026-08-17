@@ -298,7 +298,7 @@ SourceMap: source-map
 框架: Vue 2
 UI: Element UI
 图表: ECharts
-HTTP: Axios
+HTTP: Fetch API（统一请求适配层）
 ```
 
 ### 部署
