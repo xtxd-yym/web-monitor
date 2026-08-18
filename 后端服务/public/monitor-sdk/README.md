@@ -10,8 +10,10 @@ npm.cmd run release:backend
 
 生成后，在构建 `后端服务` 镜像时会随 Docker build context 一起复制到 `/app/public/monitor-sdk`。
 
-公开只读地址：
+通过现有生产 `/api` 网关公开的推荐地址：
 
-- `/monitor-sdk/monitor-loader.js`
-- `/monitor-sdk/sdk-manifest.json`
-- `/monitor-sdk/{version}/monitor.min.js`
+- `/api/monitor-sdk/monitor-loader.js`
+- `/api/monitor-sdk/sdk-manifest.json`
+- `/api/monitor-sdk/{version}/monitor.min.js`
+
+后端直连场景仍兼容不带 `/api` 的 `/monitor-sdk/*` 路径。
