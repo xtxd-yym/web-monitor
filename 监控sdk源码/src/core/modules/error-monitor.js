@@ -6,6 +6,7 @@
 import { sanitizeError } from '../../utils/sanitizer.js';
 import { isLocalEnv } from '../../utils/env.js';
 import { isErrorTypeEnabled, isUrlIgnored, resolveSamplingRate } from '../config-utils.js';
+import { buildBreadcrumbs } from './diagnostics.js';
 
 /**
  * 生成错误指纹
@@ -287,6 +288,38 @@ export function setupErrorCapture(monitor) {
   }
 }
 
+const WHITE_SCREEN_RELATED_ERROR_TYPES = new Set([
+  'javascript',
+  'resource',
+  'network',
+  'network-error',
+  'network-xhr',
+  'network-xhr-error',
+  'network-xhr-timeout',
+  'network-xhr-abort',
+  'network-fetch'
+]);
+
+/**
+ * 保留一小段已脱敏的近期错误摘要，供白屏事件关联现场使用。
+ */
+export function rememberRecentError(monitor, error, now = Date.now()) {
+  if (!WHITE_SCREEN_RELATED_ERROR_TYPES.has(error.type)) return;
+
+  const retention = Math.max(monitor.options.whiteScreenRelatedErrorWindow ?? 30000, 30000);
+  const sanitized = monitor.options.enableSanitization ? sanitizeError(error) : error;
+  monitor.recentErrors = (monitor.recentErrors || [])
+    .filter(item => now - item.timestamp <= retention);
+  monitor.recentErrors.push({
+    type: sanitized.type || 'unknown',
+    message: String(sanitized.message || '').slice(0, 500),
+    filename: String(sanitized.filename || sanitized.resource || '').slice(0, 300),
+    url: String(sanitized.url || '').slice(0, 500),
+    timestamp: sanitized.timestamp || now
+  });
+  monitor.recentErrors = monitor.recentErrors.slice(-20);
+}
+
 /**
  * 捕获错误
  * @param {Object} monitor - WebMonitor实例
@@ -310,6 +343,9 @@ export function captureError(monitor, error) {
   )) {
     return;
   }
+
+  // 在去重和采样之前记录摘要，避免白屏现场证据被客户端降噪丢失。
+  rememberRecentError(monitor, error);
 
   // === Step 2: 错误去重检查 ===
   const fingerprint = generateErrorFingerprint(error);
@@ -435,64 +471,6 @@ function getAlarmDetailByErrorType(errorType) {
  */
 
 /**
- * 将 SDK 内部的 userActions 转换为后端 insertBatch 期望的面包屑格式
- * SDK 格式: { type, element, x, y, timestamp, url, ... }
- * 后端期望: { type, category, message, data, timestamp }
- * @param {Array} userActions - monitor.userActions 数组
- * @param {number} limit - 最多取多少条（默认 30）
- * @returns {Array}
- */
-function buildBreadcrumbs(userActions, limit = 30) {
-  if (!userActions || userActions.length === 0) return [];
-
-  // 只取最近30条，避免 payload 过大
-  const recent = userActions.slice(-limit);
-
-  return recent.map(action => {
-    let message = '';
-    switch (action.type) {
-      case 'click':
-        message = `点击 ${action.element || 'unknown'}${
-          action.id ? '#' + action.id : ''
-        }${
-          action.className ? '.' + String(action.className).split(' ')[0] : ''
-        }`;
-        break;
-      case 'scroll':
-        message = `页面滚动至 (${action.scrollX || 0}, ${action.scrollY || 0})`;
-        break;
-      case 'resize':
-        message = `窗口大小变化: ${action.width || 0}x${action.height || 0}`;
-        break;
-      case 'visibility-change':
-        message = `页面${action.state === 'visible' ? '变为可见' : '进入后台'}`;
-        break;
-      default:
-        message = action.type || 'unknown';
-    }
-
-    return {
-      type: action.type || '',
-      category: action.type || '',    // 后端 insertBatch 解构的 category
-      message,                         // 后端 insertBatch 解构的 message
-      data: {                          // 其余字段存入 data，将来可展示
-        element:   action.element,
-        className: action.className,
-        id:        action.id,
-        x:         action.x,
-        y:         action.y,
-        scrollX:   action.scrollX,
-        scrollY:   action.scrollY,
-        width:     action.width,
-        height:    action.height,
-        state:     action.state,
-        url:       action.url
-      },
-      timestamp: action.timestamp || 0
-    };
-  });
-}
-/**
  * [TD-01] Payload 截断降级函数
  * 防止极限场景（200 条面包屑 + 深层堆栈）Payload 超过 64KB 被浏览器或网关静默丢弃。
  * 两步降级，始终保持 fingerprint / type / message 等核心错误身份信息不丢失。
@@ -590,6 +568,7 @@ export async function reportErrors(monitor, errorType) {
         expand: error.type === 'performance' ? error.data || {} : {},
         url: error.url || window.location.href,
         userAgent: error.userAgent || navigator.userAgent,
+        userId: error.userId || monitor.getUserId(),
 
         // 网络错误特有标记
         mark: error.type === 'network' ? (error.data?.url || '') : '',

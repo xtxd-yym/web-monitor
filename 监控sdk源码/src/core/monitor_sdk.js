@@ -165,6 +165,11 @@ class DynamicWebMonitor {
       config: {
         enablePerformanceMonitoring: false,
         enableWhiteScreenDetection: true,
+        whiteScreenConfirmations: 2,
+        whiteScreenConfirmationDelay: 1000,
+        whiteScreenRecoveryInterval: 2000,
+        whiteScreenRelatedErrorWindow: 30000,
+        whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
         enableErrorMonitoring: true,
         enableNetworkMonitoring: true,
         reportResourceErrors: true,
@@ -246,7 +251,7 @@ class DynamicWebMonitor {
           env: env || 'production',
           customer_name: this.options.apiParams?.customer_name || '',
           appkey: this.options.apiParams?.appKey || this.options.apiParams?.appkey || '',
-          version: '1.0.0',
+          version: SDK_VERSION,
           url: window.location.href,
           userAgent: navigator.userAgent
         });
@@ -310,6 +315,11 @@ class DynamicWebMonitor {
             enablePerformanceMonitoring: false,
             // 白屏检测：开
             enableWhiteScreenDetection: true,
+            whiteScreenConfirmations: 2,
+            whiteScreenConfirmationDelay: 1000,
+            whiteScreenRecoveryInterval: 2000,
+            whiteScreenRelatedErrorWindow: 30000,
+            whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
             // JS报错检测：开
             enableErrorMonitoring: true,
             // 接口获取失败（404等）：开
@@ -349,6 +359,11 @@ class DynamicWebMonitor {
         enablePerformanceMonitoring: false,
         // 白屏检测：开
         enableWhiteScreenDetection: true,
+        whiteScreenConfirmations: 2,
+        whiteScreenConfirmationDelay: 1000,
+        whiteScreenRecoveryInterval: 2000,
+        whiteScreenRelatedErrorWindow: 30000,
+        whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
         // JS报错检测：开
         enableErrorMonitoring: true,
         // 接口获取失败（404等）：开

@@ -89,3 +89,112 @@ test('实际捕获链路遵守零采样率和类型开关', async t => {
   assert.equal(disabledMonitor.errorQueue.length, 0);
   assert.equal(limiterCalls, 0);
 });
+
+test('白屏必须连续确认两次，恢复后记录持续时间并允许新事件', async () => {
+  const whiteScreenModule = await loadModule(
+    path.join(__dirname, '..', 'src/core/modules/white-screen-monitor.js')
+  );
+  const { createWhiteScreenStateTracker } = whiteScreenModule.namespace;
+  const tracker = createWhiteScreenStateTracker(2, 200);
+
+  assert.equal(tracker.observe(true, 1000).status, 'suspected');
+  assert.equal(tracker.observe(true, 1100).status, 'suspected');
+  const confirmed = tracker.observe(true, 1300);
+  assert.equal(confirmed.status, 'confirmed');
+  assert.equal(confirmed.shouldReport, true);
+
+  assert.equal(tracker.observe(true, 2000).status, 'ongoing');
+  const recovered = tracker.observe(false, 2500);
+  assert.equal(recovered.status, 'recovered');
+  assert.equal(recovered.duration, 1500);
+
+  const nextIncident = tracker.observe(true, 3000);
+  assert.equal(nextIncident.status, 'suspected');
+  assert.notEqual(nextIncident.incidentId, confirmed.incidentId);
+});
+
+test('白屏关联错误保留已脱敏的近期 JS、资源和网络摘要', async () => {
+  const errorModule = await loadModule(
+    path.join(__dirname, '..', 'src/core/modules/error-monitor.js')
+  );
+  const { rememberRecentError } = errorModule.namespace;
+  const diagnosticsModule = await loadModule(
+    path.join(__dirname, '..', 'src/core/modules/diagnostics.js')
+  );
+  const { getRecentRelatedErrors } = diagnosticsModule.namespace;
+  const monitor = {
+    options: { enableSanitization: true, whiteScreenRelatedErrorWindow: 30000 },
+    recentErrors: []
+  };
+
+  rememberRecentError(monitor, {
+    type: 'javascript',
+    message: 'boom',
+    filename: 'https://example.com/app.js?token=secret',
+    url: 'https://example.com/page?token=secret',
+    timestamp: 1000
+  }, 1000);
+  rememberRecentError(monitor, { type: 'custom', message: 'ignore', timestamp: 1500 }, 1500);
+
+  const related = getRecentRelatedErrors(monitor, 500, 2000);
+  assert.equal(related.length, 1);
+  assert.equal(related[0].type, 'javascript');
+  assert.match(related[0].url, /token=\*\*\*/);
+});
+
+test('白屏上报携带诊断证据和最近面包屑，恢复事件记录持续时间', async t => {
+  const whiteScreenModule = await loadModule(
+    path.join(__dirname, '..', 'src/core/modules/white-screen-monitor.js')
+  );
+  const { reportWhiteScreenError, reportWhiteScreenRecovery } = whiteScreenModule.namespace;
+  const originalWindow = global.window;
+  global.window = {
+    location: {
+      href: 'https://example.com/dashboard',
+      hostname: 'example.com',
+      protocol: 'https:'
+    }
+  };
+  t.after(() => {
+    global.window = originalWindow;
+  });
+
+  const reports = [];
+  const monitor = {
+    options: {
+      env: 'production',
+      project: 'monitor',
+      apiParams: { appKey: 'app-a', customer_name: '客户A', service_name: '服务A' },
+      monitorReport: async report => {
+        reports.push(report);
+        return { ok: true };
+      }
+    },
+    userActions: [{ type: 'click', element: 'BUTTON', timestamp: 900, url: 'https://example.com/dashboard' }],
+    getUserId: () => 'user-a'
+  };
+  const evidence = {
+    sampling: { emptyRatio: 1, points: [] },
+    rootContainer: { hasMainContainer: false },
+    relatedErrors: [{ type: 'javascript', message: 'boom', timestamp: 950 }]
+  };
+
+  await reportWhiteScreenError(monitor, {
+    message: 'White screen detected after 2 confirmations',
+    timestamp: 1000,
+    evidence
+  });
+  await reportWhiteScreenRecovery(monitor, {
+    incidentId: 'white-screen-500',
+    suspectedAt: 500,
+    recoveredAt: 2500,
+    duration: 2000
+  }, { isWhite: false });
+
+  assert.equal(reports[0].list[0].type, 'white_screen');
+  assert.deepEqual(reports[0].list[0].expand, evidence);
+  assert.equal(reports[0].list[0].breadcrumbs.length, 1);
+  assert.equal(reports[0].list[0].userId, 'user-a');
+  assert.equal(reports[1].list[0].type, 'white_screen_recovery');
+  assert.equal(reports[1].list[0].expand.duration, 2000);
+});

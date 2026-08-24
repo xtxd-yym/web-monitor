@@ -73,6 +73,12 @@ class WebMonitor {
       enableUserTracking: true,
       // 是否启用白屏检测
       enableWhiteScreenDetection: true,
+      // 白屏必须连续确认两次，避免异步渲染过程中的瞬时空白误报
+      whiteScreenConfirmations: 2,
+      whiteScreenConfirmationDelay: 1000,
+      whiteScreenRecoveryInterval: 2000,
+      whiteScreenRelatedErrorWindow: 30000,
+      whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
       // 自动上报阈值
       autoReportThreshold: 1,
       // 各类型错误的自动上报阈值
@@ -115,6 +121,8 @@ class WebMonitor {
     this.isReporting = false;
     // 用户行为数据
     this.userActions = [];
+    // 白屏诊断使用的近期错误摘要
+    this.recentErrors = [];
     // 页面停留时间
     this.pageStayTime = 0;
     // 页面开始时间
@@ -316,6 +324,7 @@ class WebMonitor {
     // 清理错误队列
     this.errorQueue = [];
     this.errorCounters = {};
+    this.recentErrors = [];
 
     // 清理用户行为数据
     this.userActions = [];

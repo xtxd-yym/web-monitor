@@ -37,7 +37,7 @@ test('Loader 和 Manifest 不使用长期缓存', () => {
 
 test('版本化 SDK 使用不可变长期缓存', () => {
     const { headers, response } = createResponseHeaders();
-    setSdkAssetHeaders(response, '1.0.1/monitor.min.js');
+    setSdkAssetHeaders(response, '1.1.0/monitor.min.js');
 
     assert.equal(headers['X-Content-Type-Options'], 'nosniff');
     assert.equal(headers['Cache-Control'], 'public, max-age=31536000, immutable');

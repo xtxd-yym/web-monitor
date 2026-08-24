@@ -492,6 +492,11 @@ function getDefaultConfig(env) {
             enableFetchMonitoring: true,
             enablePerformanceMonitoring: false,
             enableWhiteScreenDetection: true,
+            whiteScreenConfirmations: 2,
+            whiteScreenConfirmationDelay: 1000,
+            whiteScreenRecoveryInterval: 2000,
+            whiteScreenRelatedErrorWindow: 30000,
+            whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
             enableUserTracking: false,
             errorSampleRate: {
                 javascript: 1.0,
