@@ -5,6 +5,8 @@
  * 表名: error_logs (符合公司规范)
  */
 
+const ALARM_AGGREGATION_VERSION = 2;
+
 class ErrorModel {
     constructor(db) {
         this.db = db;
@@ -31,12 +33,15 @@ class ErrorModel {
             // 环境变量单位为秒，默认为 3600 秒 (1小时)
             const dedupeSeconds = parseInt(process.env.ERROR_DEDUPE_WINDOW_SECONDS) || 3600;
             const DEDUPE_WINDOW = dedupeSeconds * 1000;
-            const existing = await this.db.getAsync(`
-        SELECT id, occurrence_count FROM error_logs 
-        WHERE fingerprint = ? AND project = ? AND env = ?
-        AND updated_at > ?
-        ORDER BY created_at DESC LIMIT 1
-      `, [fingerprint, project, env, now - DEDUPE_WINDOW]);
+            const existing = await this.findExistingByAggregationScope({
+                fingerprint,
+                project,
+                env,
+                appkey: errorData.appkey || '',
+                customer_name: errorData.customer_name || '',
+                service_name: errorData.service_name || '',
+                updatedAfter: now - DEDUPE_WINDOW
+            });
 
             if (existing) {
                 // 更新已存在的记录
@@ -66,7 +71,8 @@ class ErrorModel {
                     ...baseExtraData,
                     customer_name: errorData.customer_name || '',
                     appkey: errorData.appkey || '',
-                    service_name: errorData.service_name || ''
+                    service_name: errorData.service_name || '',
+                    aggregation_version: ALARM_AGGREGATION_VERSION
                 };
 
                 const result = await this.db.runAsync(`
@@ -95,6 +101,58 @@ class ErrorModel {
         } catch (error) {
             console.error('插入错误记录失败:', error);
             throw error;
+        }
+    }
+
+    /**
+     * 按错误指纹和完整业务维度查找可去重记录，防止不同 AppKey/客户/服务互相合并。
+     */
+    async findExistingByAggregationScope(params) {
+        const {
+            fingerprint, project, env,
+            appkey = '', customer_name = '', service_name = '', updatedAfter
+        } = params;
+
+        if (this.db.type === 'mysql') {
+            return this.db.getAsync(`
+        SELECT id, occurrence_count FROM error_logs
+        WHERE fingerprint = ? AND project = ? AND env = ?
+        AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.appkey')), '') = ?
+        AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.customer_name')), '') = ?
+        AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.service_name')), '') = ?
+        AND COALESCE(JSON_EXTRACT(extra_data, '$.aggregation_version'), 0) = ${ALARM_AGGREGATION_VERSION}
+        AND updated_at > ?
+        ORDER BY created_at DESC LIMIT 1
+      `, [fingerprint, project, env, appkey, customer_name, service_name, updatedAfter]);
+        }
+
+        const candidates = await this.db.allAsync(`
+      SELECT id, occurrence_count, extra_data FROM error_logs
+      WHERE fingerprint = ? AND project = ? AND env = ?
+      AND updated_at > ?
+      ORDER BY created_at DESC
+    `, [fingerprint, project, env, updatedAfter]);
+
+        return candidates.find(row => {
+            const dimensions = this.parseBusinessDimensions(row.extra_data);
+            return dimensions.appkey === appkey &&
+                dimensions.customer_name === customer_name &&
+                dimensions.service_name === service_name &&
+                dimensions.aggregation_version === ALARM_AGGREGATION_VERSION;
+        }) || null;
+    }
+
+    parseBusinessDimensions(extraData) {
+        try {
+            const parsed = typeof extraData === 'string' ? JSON.parse(extraData || '{}') : (extraData || {});
+            return {
+                appkey: parsed.appkey || '',
+                customer_name: parsed.customer_name || '',
+                service_name: parsed.service_name || '',
+                aggregation_version: Number(parsed.aggregation_version) || 0
+            };
+        } catch (_) {
+            return { appkey: '', customer_name: '', service_name: '', aggregation_version: 0 };
         }
     }
 
@@ -307,7 +365,11 @@ class ErrorModel {
      * 统计指定条件下的错误数量（用于告警判断）
      */
     async count(params) {
-        const { project, env, type, startTime, endTime } = params;
+        const {
+            project, env, type, fingerprint,
+            appkey = '', customer_name = '', service_name = '',
+            startTime, endTime
+        } = params;
 
         let where = [];
         let args = [];
@@ -315,6 +377,7 @@ class ErrorModel {
         if (project) { where.push('project = ?'); args.push(project); }
         if (env) { where.push('env = ?'); args.push(env); }
         if (type) { where.push('error_type = ?'); args.push(type); }
+        if (fingerprint) { where.push('fingerprint = ?'); args.push(fingerprint); }
         // Use updated_at to catch errors that happened recently but were created long ago
         if (startTime) { where.push('updated_at >= ?'); args.push(startTime); }
         if (endTime) { where.push('updated_at <= ?'); args.push(endTime); }
@@ -322,8 +385,35 @@ class ErrorModel {
         const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
         try {
-            const res = await this.db.getAsync(`SELECT SUM(occurrence_count) as total FROM error_logs ${whereClause}`, args);
-            return res.total || 0;
+            if (this.db.type === 'mysql') {
+                const businessWhere = [
+                    "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.appkey')), '') = ?",
+                    "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.customer_name')), '') = ?",
+                    "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.service_name')), '') = ?",
+                    `COALESCE(JSON_EXTRACT(extra_data, '$.aggregation_version'), 0) = ${ALARM_AGGREGATION_VERSION}`
+                ];
+                const scopedWhere = where.length
+                    ? `WHERE ${[...where, ...businessWhere].join(' AND ')}`
+                    : `WHERE ${businessWhere.join(' AND ')}`;
+                const res = await this.db.getAsync(
+                    `SELECT SUM(occurrence_count) as total FROM error_logs ${scopedWhere}`,
+                    [...args, appkey, customer_name, service_name]
+                );
+                return Number(res.total) || 0;
+            }
+
+            const rows = await this.db.allAsync(
+                `SELECT occurrence_count, extra_data FROM error_logs ${whereClause}`,
+                args
+            );
+            return rows.reduce((total, row) => {
+                const dimensions = this.parseBusinessDimensions(row.extra_data);
+                const matches = dimensions.appkey === appkey &&
+                    dimensions.customer_name === customer_name &&
+                    dimensions.service_name === service_name &&
+                    dimensions.aggregation_version === ALARM_AGGREGATION_VERSION;
+                return matches ? total + (Number(row.occurrence_count) || 0) : total;
+            }, 0);
         } catch (e) {
             console.error('Count errors failed', e);
             return 0;

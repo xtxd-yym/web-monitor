@@ -147,7 +147,8 @@
             <el-col :span="12">
               <el-form-item label="阈值" prop="threshold"
                 :rules="[{ required: true, message: '请输入阈值', trigger: 'change' }]">
-                <el-input-number v-model="editForm.threshold" :min="0" style="width: 100%" />
+                <el-input-number v-model="editForm.threshold" :min="minimumThreshold" style="width: 100%" />
+                <div v-if="editForm.level === 'L1'" class="field-tip">L1 至少连续发生 2 次才允许触发。</div>
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -192,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '../api/request';
 import { Search, Monitor, Edit } from '@element-plus/icons-vue';
@@ -209,13 +210,15 @@ const editFormRef = ref(null);
 const editForm = reactive({
   instance_name: '',
   enabled: 1,
-  threshold: 0,
+  threshold: 2,
   time_frame: 300,
+  level: 'L1',
   output: '',
   vanish_enabled: false,
   vanish_notice_person: '',
   description: ''
 });
+const minimumThreshold = computed(() => editForm.level === 'L1' ? 2 : 1);
 
 const queryParams = reactive({
   instance_name: '',
@@ -262,11 +265,13 @@ const showDetail = (row) => {
     try {
         const rules = row.rules_json ? JSON.parse(row.rules_json) : {};
         editForm.output = rules.output || '';
+        editForm.level = rules.level || 'L1';
         editForm.vanish_enabled = rules.vanish_enabled === true;
         editForm.vanish_notice_person = rules.vanish_notice_person || '';
         editForm.description = rules.description || '';
     } catch (e) {
         editForm.output = '';
+        editForm.level = 'L1';
         editForm.vanish_enabled = false;
         editForm.vanish_notice_person = '';
         editForm.description = '';
@@ -287,6 +292,10 @@ const saveEdit = async () => {
     } catch (e) {
         return;
     }
+    if (editForm.threshold < minimumThreshold.value) {
+        ElMessage.error(`当前告警等级的阈值不得小于 ${minimumThreshold.value}`);
+        return;
+    }
     saveLoading.value = true;
     try {
         if (editForm.vanish_enabled) {
@@ -303,6 +312,7 @@ const saveEdit = async () => {
             enabled: editForm.enabled,
             threshold: editForm.threshold,
             time_frame: editForm.time_frame,
+            level: editForm.level,
             output: editForm.output,
             vanish_enabled: editForm.vanish_enabled,
             vanish_notice_person: editForm.vanish_notice_person,
@@ -439,5 +449,12 @@ onMounted(() => {
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid #f0f0f0;
+}
+
+.field-tip {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

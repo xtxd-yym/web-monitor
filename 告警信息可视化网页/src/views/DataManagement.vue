@@ -132,7 +132,8 @@
               </el-col>
               <el-col :span="12">
                 <el-form-item label="阈值" required>
-                  <el-input-number v-model="formData.threshold" :min="0" placeholder="请输入阈值" style="width: 100%" />
+                  <el-input-number v-model="formData.threshold" :min="minimumThreshold" placeholder="请输入阈值" style="width: 100%" />
+                  <div v-if="formData.level === 'L1'" class="field-tip">L1 至少连续发生 2 次才允许触发，单次异常不会发送最高级别告警。</div>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -256,6 +257,7 @@ const apiOptions = [
 ];
 
 const levelOptions = ['L1', 'L2', 'L3', 'L4', 'L5'];
+const minimumThreshold = computed(() => formData.level === 'L1' ? 2 : 1);
 
 const isDelete = computed(() => selectedApi.value.includes('delete'));
 
@@ -271,7 +273,7 @@ const formData = reactive({
   appkey: '',
   customer_name: '',
   project_name: '',
-  threshold: 0,
+  threshold: 2,
   time_frame: 300,
   output: '',
   level: 'L1',
@@ -312,7 +314,7 @@ const resetForm = () => {
         if (typeof formData[key] === 'boolean') {
             formData[key] = key === 'vanish_enabled' ? false : true;
         } else if (typeof formData[key] === 'number') {
-           formData[key] = key === 'threshold' ? 0 : (key === 'time_frame' ? 300 : (key === 'repeat_interval' ? 3600 : 1));
+           formData[key] = key === 'threshold' ? 2 : (key === 'time_frame' ? 300 : (key === 'repeat_interval' ? 3600 : 1));
         } else {
             formData[key] = key === 'level' ? 'L1' : '';
         }
@@ -464,6 +466,10 @@ const validateForm = () => {
                      ElMessage.warning(`请填写必填项：${labels[field] || field}`);
                      return false;
                  }
+             }
+             if (formData.threshold < minimumThreshold.value) {
+                 ElMessage.warning(`当前告警等级的阈值不得小于 ${minimumThreshold.value}`);
+                 return false;
              }
              if (formData.vanish_enabled) {
                  const vanishRecipients = formData.vanish_notice_person
@@ -640,5 +646,12 @@ const submitForm = async () => {
   font-size: 12px;
   color: #909399;
   margin-top: 6px;
+}
+
+.field-tip {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

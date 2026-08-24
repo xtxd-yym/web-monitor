@@ -1,8 +1,13 @@
 
 const express = require('express');
 const vanishService = require('../services/vanish');
+const { validateAlarmRule } = require('../services/alarmPolicy');
 
-function validateNotificationRules(rules) {
+function validateRules({ threshold, rules, defaultLevel, requireThreshold = false }) {
+    if (requireThreshold || threshold !== undefined) {
+        validateAlarmRule({ threshold, level: rules.level || defaultLevel });
+    }
+
     if (rules.vanish_enabled !== undefined && typeof rules.vanish_enabled !== 'boolean') {
         throw new Error('vanish_enabled 必须为布尔值');
     }
@@ -34,7 +39,7 @@ module.exports = (instanceModel) => {
                 rules
             };
 
-            validateNotificationRules(rules);
+            validateRules({ threshold, rules, defaultLevel: 'L1', requireThreshold: true });
             await instanceModel.add(data);
             res.json(success(null));
         } catch (e) {
@@ -59,7 +64,8 @@ module.exports = (instanceModel) => {
                 rules
             };
 
-            validateNotificationRules(rules);
+            // 兼容只更新部分字段的旧调用方；运行时仍会为已有 L1 规则执行最低阈值保护。
+            validateRules({ threshold, rules, defaultLevel: 'L2' });
             await instanceModel.update(data);
             res.json(success(null));
         } catch (e) {

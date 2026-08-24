@@ -5,6 +5,11 @@
 
 const express = require('express');
 const vanishService = require('../services/vanish');
+const {
+    buildAlarmAggregationScope,
+    normalizeLevel,
+    resolveEffectiveThreshold
+} = require('../services/alarmPolicy');
 const router = express.Router();
 
 
@@ -170,8 +175,14 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
 
                             // 2.1 严格匹配检查 (Strict Matching)
                             // 检查 AppKey
-                            if (ruleConfig.appkey && ruleConfig.appkey !== body.appkey) {
+                            if (ruleConfig.appkey && ruleConfig.appkey !== errorData.appkey) {
                                 continue; // Mismatch
+                            }
+                            if (ruleConfig.customer_name && ruleConfig.customer_name !== errorData.customer_name) {
+                                continue;
+                            }
+                            if (ruleConfig.service_name && ruleConfig.service_name !== errorData.service_name) {
+                                continue;
                             }
                             // 检查 User ID (如果规则配置了特定用户)
                             // 注意: errorData.user_id 可能为空，如果规则强制要求用户，则需匹配
@@ -205,27 +216,22 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                                 }
                             }
 
-                            // Implemented threshold check 
+                            // 按当前错误的完整业务维度和指纹统计，避免同项目下其他组件或错误互相抬高计数。
                             const timeFrame = rule.time_frame || 60; // default 60s
                             const now = Date.now();
                             const startTime = now - (timeFrame * 1000);
+                            const level = normalizeLevel(ruleConfig.level);
+                            const effectiveThreshold = resolveEffectiveThreshold(rule.threshold, level);
 
                             const errorCount = await errorModel.count({
-                                project: errorData.project,
-                                env: errorData.env,
-                                type: errorData.type,
-                                // Use precise user_id for count if rule is user-specific
-                                // (Optional: user might want count of ALL errors for this project, or just this user?
-                                // Usually if rule is specific to user, count should be specific to user.
-                                // But errorModel.count currently doesn't support user_id filter.
-                                // Let's keep it project-level for now as per errorModel capability)
+                                ...buildAlarmAggregationScope(errorData),
                                 startTime: startTime,
                                 endTime: now
                             });
 
-                            if (errorCount >= rule.threshold) {
+                            if (errorCount >= effectiveThreshold) {
                                 // 触发告警！
-                                console.log(`[Alarm] Rule matched: ${rule.instance_name}, Count: ${errorCount}/${rule.threshold}`);
+                                console.log(`[Alarm] Rule matched: ${rule.instance_name}, Count: ${errorCount}/${effectiveThreshold}`);
 
                                 const alarmRecord = {
                                     project: errorData.project,
@@ -233,8 +239,8 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                                     instance_name: rule.instance_name || '', // Persist for history
                                     instance_uuid: rule.instance_id || '', // Persist user-defined ID
                                     error_id: result.id,
-                                    level: ruleConfig.level || 'L1', // Use level from rules_json
-                                    message: `[${rule.instance_name}] 触发告警: ${timeFrame}秒内发生 ${errorCount} 次 (阈值: ${rule.threshold})`,
+                                    level,
+                                    message: `[${rule.instance_name}] 触发告警: ${timeFrame}秒内同一组件、客户、服务和错误指纹发生 ${errorCount} 次 (有效阈值: ${effectiveThreshold})`,
                                     status: 'pending',
                                     customer_name: errorData.customer_name || '',
                                     appkey: errorData.appkey || '',
