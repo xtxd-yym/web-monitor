@@ -2,197 +2,166 @@
 
 > 文档日期：2026-08-27
 >
-> 适用范围：Incident 平台复用云监控 MySQL 基础设施时的配置申请、Secret 注入、权限和运维交接。
+> 适用范围：Incident 平台参考云监控现有方式，通过 b2bpass 环境变量接入 MySQL。
 >
-> 安全要求：本文只记录配置项、申请方式和责任边界，禁止填写真实密码、Token、Secret 或其他生产凭证。
+> 安全要求：本文只记录变量名和配置方式，禁止填写真实密码、Token、Secret、数据库账号或内部地址。
 
-## 1. 接入结论与环境边界
+## 1. 接入方案
 
-- 云监控当前运行在正式环境，后端使用 MySQL，并通过 ProxySQL 访问业务库 `monitor_system`。
-- Incident 平台首次接入应先使用 **TEST MySQL** 完成连通性、权限、读写、连接池和故障回退验证；不得直接将未验证版本连接到正式 MySQL。
-- Incident 平台接入正式 MySQL 前，必须完成 DBA、b2bpass 平台、云监控负责人、Incident 负责人和数据合规负责人的确认。
-- 优先申请 Incident 独立 schema 和独立数据库账号。只有独立 schema 不被允许时，才申请在 `monitor_system` 中创建四张带 `incident_` 前缀的独立表。
-- Incident 应复用 MySQL 基础设施，不复用云监控应用账号、表名或未隔离的数据访问权限。
+- Incident **正式环境复用云监控正式 MySQL**；如果 Incident 另有 TEST 部署，则由 b2bpass 注入对应 TEST MySQL 配置，TEST 服务不连接正式库。
+- 连接方式与云监控一致：通过 **ProxySQL** 访问 MySQL，不在代码中写死真实 Host、Port、账号或密码。
+- 正式环境使用的 database 为 `monitor_system`。
+- 本次复用方案不要求新建独立 schema，Incident 在 `monitor_system` 中使用四张统一带 `incident_` 前缀的业务表，与云监控现有表隔离。
+- Incident 直接沿用云监控的 `DB_*` 环境变量名。不同项目运行在不同容器中，变量名相同不会冲突，不需要增加 `INCIDENT_` 前缀。
+- b2bpass 负责向 Incident 容器注入实际配置；Incident 代码只读取环境变量，不需要知道真实配置值。
 
-## 2. 配置交接确认表
+## 2. MySQL 基础配置
 
-下表中“已确认”来自当前云监控仓库配置；“待确认”必须在 TEST 接入或正式上线前由对应责任方补充结论。补充时不得在本文写入密码或 Secret 值。
+| 项目 | Incident 接入配置 |
+|---|---|
+| 使用环境 | Incident 正式环境使用云监控正式 MySQL；TEST 环境使用对应 TEST 配置 |
+| MySQL 版本 | 沿用云监控所在 MySQL 实例版本，由数据库平台统一维护；应用不单独配置版本。开发兼容基线按 MySQL 8.0 处理 |
+| 连接方式 | ProxySQL |
+| Host | 通过 `DB_HOST` 注入，可放在 b2bpass 普通配置中，不在本文记录真实值 |
+| Port | 通过 `DB_PORT` 注入，可放在 b2bpass 普通配置中，不在本文记录真实值 |
+| database | `monitor_system`，通过 `DB_NAME` 注入 |
+| 独立 schema | 本次不新建；如数据库平台后续分配独立 schema，只需调整 `DB_NAME` 和账号授权，应用代码无需改变 |
+| Incident 表 | 在 `monitor_system` 中创建四张 `incident_` 前缀表，准确表名以 Incident 项目的建表 DDL 为准 |
+| 时区 | `+08:00`，通过 `DB_TIMEZONE` 注入；页面展示使用 `Asia/Shanghai` |
+| 字符集 | 四张表统一使用 `utf8mb4`；Incident 数据库客户端也保持 `utf8mb4` |
+| 连接池 | 默认按云监控现有配置设置为每个应用实例 10 个连接 |
 
-| 配置项 | 当前结论或建议配置 | 状态 | 确认责任方 |
+MySQL 精确版本、ProxySQL 真实地址、端口和数据库账号均由现有数据库平台及 b2bpass 管理，不需要 Incident 负责人手工收集或写入接入文档。
+
+## 3. Incident 需要读取的环境变量
+
+Incident 可以直接参考云监控的数据库配置代码，读取以下变量：
+
+| 环境变量 | 是否敏感 | 配置方式 | 说明 |
 |---|---|---|---|
-| 接入环境 | Incident 首次接入使用 TEST；正式环境须另行审批、部署和验收 | 接入原则已明确；具体 TEST 实例待确认 | Incident 负责人、云监控负责人、DBA |
-| 云监控当前环境 | 云监控当前连接正式 MySQL | 已确认 | 云监控负责人 |
-| MySQL 版本 | 本地开发参考环境为 MySQL 8.0，但这不能证明 TEST 或正式实例版本；需分别查询实例版本并记录版本号 | 待 DBA 确认 | DBA |
-| 连接方式 | 正式环境通过 ProxySQL 连接；Incident 应优先使用同环境批准的 ProxySQL 入口，不绕过代理直连主库 | 云监控现状已确认；Incident 入口待批准 | DBA、基础设施负责人 |
-| Host、Port 配置 | Host、Port 通常可作为 b2bpass 普通配置或非敏感环境变量；是否允许明文展示内网地址仍以公司安全规范为准。正式 ProxySQL 常用端口不能由本文中的示例或代码默认值代替实际确认 | 待平台/安全确认 | b2bpass 平台负责人、安全负责人 |
-| database 名称 | 云监控当前业务库为 `monitor_system`；Incident 优先使用批准的新 schema。若不能新建，则使用 `monitor_system` | 云监控现状已确认；Incident 目标待 DBA 确认 | DBA |
-| 新建独立 schema | 优先申请，例如使用经命名规范审批的 Incident 专属 schema；本文不预设最终名称 | 待 DBA 确认 | DBA、云监控负责人 |
-| 共库四张表 | 若独立 schema 被拒绝，申请在 `monitor_system` 新建且仅新建四张 `incident_` 前缀表；最终四个表名和 DDL 随数据库工单提交，不与云监控现有表混用 | 备选方案，待 DBA 确认 | DBA、Incident 负责人 |
-| DDL 执行方式 | 应用禁止自动建表或自动迁移；正式 DDL 由 DBA/数据库工单人工执行。TEST 是否同样要求工单需由 DBA 确认 | 正式环境已确认；TEST 流程待确认 | DBA |
-| 独立数据库账号 | 必须优先申请 Incident 独立账号，不得共享云监控账号；账号命名按平台规范确定 | 能否创建待 DBA 确认 | DBA、安全负责人 |
-| DML 权限 | 仅授予 Incident 自有 schema 或四张前缀表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE`；不授予全库权限、DDL 权限、授权权限或云监控其他表权限 | 权限建议已明确；实际授权待工单 | DBA |
-| Secret 注入 | 数据库密码必须由 b2bpass Secret 注入容器环境变量；不得写入代码、镜像、普通配置、Markdown、工单描述、日志或前端状态 | 已确认 | b2bpass 平台负责人、Incident 负责人 |
-| 网络访问 | 仅放通 Incident 工作负载到目标 ProxySQL/MySQL 地址和端口；不开放公网。需确认源服务身份或出口 IP、目标环境、DNS、TLS 要求和网络白名单 | 待基础设施确认 | 网络/基础设施负责人 |
-| 时区 | 数据库客户端连接时区保持 `+08:00`；业务展示统一按 `Asia/Shanghai` 处理。Incident 不应自行改用其他连接时区 | 云监控现状已确认 | Incident 负责人 |
-| 字符集 | 新表和文本字段保持 `utf8mb4`；连接字符集、库/表排序规则由 DBA 按现有实例规范确认 | 字符集建议已确认；排序规则待确认 | DBA |
-| 连接池上限 | 云监控当前为每实例 10。Incident 建议从每实例 5 起步，在 DBA 批准前不得超过每实例 10；总连接预算按“副本数 × 每实例连接池上限”计算 | 云监控现状已确认；Incident 配额待确认 | DBA、Incident 负责人 |
-| 数据库侧连接限制 | 需确认账号级连接限制、实例 `max_connections`、ProxySQL 限流/超时及为运维保留的连接数；应用连接池总量必须小于获批配额 | 待 DBA 确认 | DBA |
-| 备份方式 | 需确认实例备份类型、频率、保留周期、是否支持按时间点恢复，以及 TEST 恢复演练方式 | 待 DBA 确认 | DBA |
-| 恢复责任 | DBA 负责数据库备份与恢复执行；Incident 负责人负责恢复申请、影响评估、恢复后业务数据校验；云监控负责人负责确认共库场景未影响云监控 | 待各方确认 | DBA、Incident 负责人、云监控负责人 |
-| 数据保留期限 | 上线前必须确定在线保留、归档和删除期限。建议初始方案为在线保留 180 天，最终期限以数据合规审批和容量评估为准 | 建议值，待数据负责人确认 | 数据负责人、Incident 负责人、DBA |
-| 脱敏客户问题文本 | 未取得数据合规书面确认前不允许保存。若批准，只能保存脱敏后的必要文本，并禁止写入密码、Token、Secret、个人敏感信息、完整账号、Cookie 和带敏感参数的 URL | 待数据合规确认 | 数据负责人、安全负责人 |
-| 故障联系人 | DBA、b2bpass、网络/基础设施、云监控和 Incident 各指定一名主联系人及一名备份联系人；联系方式维护在公司内部通讯录/值班系统，不在本文写私人信息 | 待补齐 | 各团队负责人 |
-| 回滚方式 | 优先停止 Incident 写入并回退应用配置/版本；必要时撤销 Incident 网络白名单或数据库账号权限。禁止把 `DROP TABLE` 作为常规回滚；数据恢复由 DBA 按已确认备份方案执行 | 原则已明确；具体 Runbook 待确认 | Incident 负责人、DBA |
+| `DB_TYPE` | 否 | b2bpass 普通配置 | 固定为 `mysql` |
+| `DB_HOST` | 通常否 | b2bpass 普通配置 | ProxySQL Host，由平台注入 |
+| `DB_PORT` | 通常否 | b2bpass 普通配置 | ProxySQL Port，由平台注入 |
+| `DB_USER` | 是 | b2bpass Secret 引用 | 数据库账号，不在代码或文档中记录真实值 |
+| `DB_PASSWORD` | 是 | b2bpass Secret 引用 | 数据库密码，必须使用 Secret 注入 |
+| `DB_NAME` | 否 | b2bpass 普通配置 | 固定为 `monitor_system` |
+| `DB_TIMEZONE` | 否 | b2bpass 普通配置 | 固定为 `+08:00` |
 
-## 3. 推荐的隔离方案
+参考读取方式：
 
-### 3.1 首选：独立 schema + 独立账号
+```js
+const databaseConfig = {
+    type: process.env.DB_TYPE || 'mysql',
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME || 'monitor_system',
+    timezone: process.env.DB_TIMEZONE || '+08:00'
+};
+```
 
-- Incident 使用独立 schema，云监控继续使用 `monitor_system`。
-- Incident 独立账号只拥有自身 schema 的 `SELECT`、`INSERT`、`UPDATE`、`DELETE`。
-- Incident 和云监控分别设置连接池预算，避免一个系统耗尽实例连接数。
-- 备份仍可复用实例能力，但恢复范围、恢复顺序和数据校验责任必须单独约定。
+以上代码只展示变量读取方式，不包含任何真实配置。正式环境不应为 Host、账号或密码设置代码内默认值，缺少必要变量时应拒绝启动。
 
-### 3.2 备选：`monitor_system` 内四张前缀表 + 独立账号
+## 4. b2bpass 注入方式
 
-只有 DBA 明确不允许新建独立 schema 时使用此方案：
+1. 在 Incident 的 b2bpass 容器配置中增加与云监控相同名称的 `DB_*` 环境变量。
+2. `DB_TYPE`、`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_TIMEZONE` 使用普通环境配置。
+3. `DB_USER`、`DB_PASSWORD` 通过 b2bpass Secret 引用映射到容器环境变量，不复制 Secret 实际值。
+4. Incident 是独立容器，不能自动继承云监控容器中的变量；需要在 Incident 的部署配置中建立对应映射，但代码层不需要重新设计数据库配置。
+5. TEST 与正式环境分别维护配置和 Secret 引用，不能把正式数据库凭证复制到 TEST。
+6. 应用日志不得输出 `DB_USER`、`DB_PASSWORD`、完整数据库连接串或 Secret 值。
 
-- 四张表统一使用 `incident_` 前缀，确切表名由 Incident 数据模型评审后确定。
-- 数据库工单中必须同时列出四张表的完整名称、DDL、索引、字符集、排序规则和预计数据量。
-- Incident 账号仅授权这四张表的 `SELECT`、`INSERT`、`UPDATE`、`DELETE`。
-- 禁止访问或修改 `monitor_system` 中云监控已有表；禁止使用无前缀通用表名。
-- 后续新增第五张表、修改字段或索引时必须重新走数据库变更流程，不能由应用自动执行。
+数据库平台为 Incident 创建独立数据库账号，并通过 `DB_USER`、`DB_PASSWORD` 注入。独立账号的创建和授权由 DBA 执行，Incident 代码不需要增加新的配置变量，文档也不保存真实账号信息。
 
-## 4. b2bpass 配置与 Secret 注入
+## 5. 四张表和数据库权限
 
-以下仅为推荐的变量命名和分类，不包含任何真实值。Incident 项目可按自身配置规范调整变量名，但必须保持普通配置和 Secret 分离。
+环境变量只能解决“如何连接数据库”，不能替代建表和授权。本次接入需要完成以下数据库侧动作：
 
-### 4.1 普通配置
+- Incident 项目提供四张 `incident_` 前缀表的准确表名和 DDL。
+- 四张表创建在 `monitor_system`，字符集统一为 `utf8mb4`。
+- 生产 DDL 由 DBA 通过数据库工单或人工执行；Incident 和云监控应用均不得自动建表或自动迁移。
+- `DB_USER` 对四张 Incident 表只需要 `SELECT`、`INSERT`、`UPDATE`、`DELETE`。
+- 不授予 `CREATE`、`ALTER`、`DROP`、`GRANT` 等权限，也不扩大到 `monitor_system.*` 全库权限。
+- Incident 不读写云监控的 `error_logs`、`monitor_configs`、`alarm_records` 等现有业务表。
 
-| 环境变量 | 用途 | 示例占位符 |
+如果数据库平台后续允许并分配独立 schema，只需要：
+
+1. DBA 在新 schema 中创建相同四张表并完成授权；
+2. b2bpass 将 `DB_NAME` 改为新 schema；
+3. 滚动重启 Incident 服务。
+
+Incident 代码和其他环境变量不需要改变。
+
+## 6. 网络和连接池
+
+- Incident 通过 `DB_HOST`、`DB_PORT` 使用云监控现有 ProxySQL 链路，不直连 MySQL 主库。
+- 如果 Incident 与云监控处于相同 b2bpass 网络访问域，直接复用现有数据库访问方式，不需要额外提供 Host 或 Port。
+- 如果 Incident 所在命名空间默认无法访问 ProxySQL，由基础设施平台按 Incident 服务身份补充网络白名单；不需要把真实地址写入代码或本文。
+- Incident 连接池默认上限为每实例 10，与云监控当前配置一致。
+- 数据库侧最大连接数和 ProxySQL 限流沿用现有平台策略。只有 Incident 扩容后出现连接不足或计划大规模增加副本时，才需要重新评估连接预算。
+
+## 7. 备份、保留和客户问题文本
+
+### 7.1 备份和恢复
+
+- Incident 四张表随 `monitor_system` 复用现有 MySQL 备份机制，不为本次接入单独建设备份系统。
+- 数据库备份和恢复操作由 DBA 负责。
+- Incident 负责人负责在恢复后校验四张 Incident 表的数据完整性；云监控负责人负责确认云监控现有表未受影响。
+
+### 7.2 数据保留
+
+- 本次接入不新增数据库自动清理任务，Incident 表数据按照 `monitor_system` 现有存储和备份生命周期保留。
+- 如果 Incident 业务要求固定保留天数，应由 Incident 项目单独实现并评审清理策略，不能直接清理云监控表或由本接入文档预设未经确认的天数。
+
+### 7.3 客户问题文本
+
+Incident 允许保存事件处置所必需的、已经脱敏的客户问题文本，但必须满足：
+
+- 不保存密码、Token、Secret、Cookie、Authorization 头或其他凭证；
+- 不保存个人敏感信息、完整账号和带敏感查询参数的 URL；
+- 不保存与事件处置无关的客户原始问题全文；
+- 脱敏应在写入数据库之前完成，日志和数据导出遵守相同规则。
+
+## 8. 故障联系人和回滚方式
+
+### 8.1 处理责任
+
+| 故障类型 | 第一处理方 | 配合方 |
 |---|---|---|
-| `INCIDENT_DB_TYPE` | 数据库类型 | `mysql` |
-| `INCIDENT_DB_HOST` | 经批准的 ProxySQL 或 MySQL Host | `<由平台配置>` |
-| `INCIDENT_DB_PORT` | 经批准的连接端口 | `<由平台配置>` |
-| `INCIDENT_DB_NAME` | 独立 schema 或 `monitor_system` | `<由DBA确认>` |
-| `INCIDENT_DB_TIMEZONE` | 客户端连接时区 | `+08:00` |
-| `INCIDENT_DB_CHARSET` | 客户端字符集 | `utf8mb4` |
-| `INCIDENT_DB_POOL_LIMIT` | 每实例连接池上限 | `<由DBA批准>` |
+| Incident 应用报错、SQL 错误 | Incident 项目负责人 | DBA |
+| ProxySQL、连接数、数据库权限或恢复 | DBA/数据库值班 | Incident 项目负责人 |
+| b2bpass 配置或 Secret 注入失败 | b2bpass 平台值班 | Incident 项目负责人 |
+| 网络、DNS、白名单问题 | 基础设施平台值班 | Incident 项目负责人 |
+| 影响云监控现有表或服务 | 云监控负责人 | Incident 项目负责人、DBA |
 
-如果安全规范将 Host、Port 或数据库账号也认定为敏感信息，则这些配置同样转为 Secret 管理，不应因为本表分类而降低安全级别。
+具体人员和联系方式使用公司内部通讯录和值班系统维护，不在本文记录私人手机号或其他敏感信息。
 
-### 4.2 Secret
+### 8.2 回滚方式
 
-| 环境变量 | 用途 | 注入要求 |
-|---|---|---|
-| `INCIDENT_DB_USER` | Incident 独立数据库账号 | 建议通过 b2bpass Secret 引用注入 |
-| `INCIDENT_DB_PASSWORD` | Incident 数据库密码 | 必须通过 b2bpass Secret 引用注入 |
+1. 回滚 Incident 应用版本，或关闭 Incident 数据库写入入口。
+2. 回退 Incident b2bpass 中本次新增的 `DB_*` 环境变量映射并滚动重启。
+3. 如存在异常连接或越权风险，由 DBA 临时锁定 Incident 使用的数据库账号，或由平台撤销 Incident 到 ProxySQL 的访问权限。
+4. 数据写入错误时，由 Incident 负责人提供影响时间范围和记录条件，DBA 按现有备份机制处理恢复。
+5. 禁止使用 `DROP TABLE`、`TRUNCATE TABLE` 或删除整个 schema 作为常规回滚手段。
 
-b2bpass 部署时应遵循以下方式：
+## 9. 接入检查清单
 
-1. 在对应的 TEST 或正式环境创建独立 Secret 条目，Secret 值只由获授权人员录入。
-2. 在容器配置中把 Secret **引用**映射为环境变量，不把值复制到部署 YAML、启动参数或普通配置字段。
-3. TEST 与正式环境使用不同的 Secret、账号和权限，禁止复用正式凭证进行 TEST 联调。
-4. 应用启动日志只允许输出目标环境、脱敏后的 Host/Port、database 名称和连接结果；不得输出账号、密码、连接串或 Secret 引用解析结果。
-5. 密码轮换时只更新 b2bpass Secret，并按平台流程滚动重启 Incident 实例；旧凭证由 DBA 在验证新凭证生效后撤销。
+- [ ] Incident 代码已读取 `DB_TYPE`、`DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME`、`DB_TIMEZONE`。
+- [ ] b2bpass 已完成普通配置和 Secret 引用映射，代码、文档和日志中没有真实凭证。
+- [ ] `DB_NAME` 为 `monitor_system`，时区为 `+08:00`。
+- [ ] 四张 `incident_` 前缀表已由 DBA 创建，字符集为 `utf8mb4`。
+- [ ] `DB_USER` 对四张表具有 `SELECT/INSERT/UPDATE/DELETE`，且不能访问无关云监控表。
+- [ ] Incident 容器能够通过 ProxySQL 建立连接。
+- [ ] 已完成四张表的最小增、查、改、删验证和越权拒绝验证。
+- [ ] 连接池上限为每实例 10，应用不会自动建表或修改表结构。
+- [ ] 已确认故障时由 Incident 先停写/回滚，数据库恢复由 DBA 执行。
 
-## 5. 网络与连接池约束
+## 10. 禁止事项
 
-### 5.1 网络申请信息
-
-网络或白名单申请至少应包含：
-
-- 源：Incident 的 TEST/正式服务身份、命名空间或固定出口 IP；
-- 目标：对应环境的 ProxySQL/MySQL 服务名或内网地址；
-- 端口：由 DBA/平台确认的唯一目标端口；
-- 方向：Incident 到数据库的单向出站连接；
-- 环境隔离：TEST 不能访问正式数据库，正式服务不能使用 TEST 账号；
-- 安全要求：确认是否强制 TLS、证书由谁下发以及证书如何通过 Secret 挂载；
-- 有效期：临时联调白名单应设置到期时间，正式规则纳入平台资产管理。
-
-### 5.2 连接池预算
-
-- 云监控当前连接池上限为每实例 10，此数值不是 Incident 自动获得的额外配额。
-- Incident 初始建议每实例 5，最终上限由 DBA 根据实例容量和 ProxySQL 策略批准。
-- 申请总连接数时按下式计算：`Incident 最大副本数 × 每实例连接池上限 + 发布期间新旧副本重叠连接数`。
-- 必须确认连接等待超时、连接超时、空闲连接回收、查询超时和重试策略；重试应有次数上限和退避，避免数据库故障时形成重试风暴。
-- 正式扩容副本或提高连接池前，应重新核对数据库连接预算，不能只修改应用参数。
-
-## 6. 数据、备份与合规
-
-### 6.1 数据保留
-
-- 上线审批必须给出最终保留期限、归档方式和删除责任人。
-- 在最终策略确认前，建议以 180 天在线保留作为容量测算基线，不代表已获批准。
-- 清理任务不得由本次接入默认启用；如后续需要自动清理，应单独评审、测试并建立可观测和失败告警。
-
-### 6.2 客户问题文本
-
-- 默认只保存结构化事件字段和处理状态，不保存客户原始问题全文。
-- 经数据合规批准后，可保存完成脱敏且为事件处置所必需的文本。
-- 入库前至少移除：密码、Token、Secret、Cookie、Authorization 头、个人敏感信息、完整账号、内部凭证和 URL 敏感查询参数。
-- 应记录脱敏规则版本，并通过抽样审计确认无敏感信息落库；日志、备份和导出数据遵守相同要求。
-
-### 6.3 备份与恢复
-
-上线前应由 DBA 书面确认：
-
-- 全量/增量备份频率及保留周期；
-- 是否支持按时间点恢复，以及可达到的 RPO、RTO；
-- 共库情况下能否只恢复 Incident 四张表，若不能，如何避免影响云监控；
-- 最近一次 TEST 恢复演练的时间、结果和证据位置；
-- 恢复由谁发起工单、谁执行、谁验证 Incident 数据、谁确认云监控未受影响。
-
-## 7. 故障处理与回滚
-
-故障联系人应维护在公司内部通讯录或值班系统，交接时补齐以下角色，不在本文写入私人手机号或其他敏感信息：
-
-| 角色 | 主联系人 | 备份联系人 | 职责 |
-|---|---|---|---|
-| Incident 应用负责人 | `<内部通讯录链接或团队名>` | `<内部通讯录链接或团队名>` | 停写、应用回滚、数据校验 |
-| 云监控负责人 | `<内部通讯录链接或团队名>` | `<内部通讯录链接或团队名>` | 评估和确认云监控是否受影响 |
-| DBA/数据库值班 | `<内部值班入口>` | `<内部值班入口>` | 权限、限流、备份与恢复 |
-| b2bpass 平台负责人 | `<内部值班入口>` | `<内部值班入口>` | Secret 注入、版本回退、容器配置 |
-| 网络/基础设施负责人 | `<内部值班入口>` | `<内部值班入口>` | DNS、TLS、白名单和链路排查 |
-| 数据合规/安全负责人 | `<内部流程入口>` | `<内部流程入口>` | 文本保存与脱敏合规判断 |
-
-推荐回滚顺序：
-
-1. Incident 侧关闭数据库写入入口或将应用回滚到未启用 MySQL 接入的稳定版本。
-2. 确认 Incident 连接数下降，云监控数据库读写和告警功能未受影响。
-3. 若存在异常连接或越权风险，由平台撤销网络白名单，或由 DBA 临时锁定 Incident 独立账号。
-4. 若发生错误数据写入，由 Incident 负责人明确时间范围和影响记录，DBA 根据备份能力制定恢复方案；禁止直接删除整表。
-5. 恢复后分别验证 Incident 数据完整性和云监控核心读写，再决定是否重新放量。
-
-## 8. TEST 接入与正式上线确认清单
-
-### 8.1 TEST 接入前
-
-- [ ] DBA 已确认 TEST MySQL 精确版本、连接入口和端口。
-- [ ] 已确认使用独立 schema；如被拒绝，已批准 `monitor_system` 内四张 `incident_` 前缀表方案。
-- [ ] 四张表名、DDL、索引、字符集、排序规则和预估数据量已完成评审。
-- [ ] DDL 已由 DBA/工单执行，应用中不存在自动建表或自动迁移。
-- [ ] Incident 独立账号已创建，并仅授予获批范围的四种 DML 权限。
-- [ ] b2bpass 已分别配置普通配置和 Secret 引用，仓库与镜像中不存在真实凭证。
-- [ ] 网络白名单、DNS、端口和 TLS 要求已确认。
-- [ ] 连接池总预算、账号级限制、ProxySQL 策略和数据库侧连接限制已确认。
-- [ ] 已确认时区 `+08:00` 和字符集 `utf8mb4`。
-
-### 8.2 正式上线前
-
-- [ ] TEST 已完成最小 `SELECT/INSERT/UPDATE/DELETE` 权限验证和越权访问拒绝验证。
-- [ ] 已验证最大副本数下的总连接数不会超过批准配额。
-- [ ] 正式环境使用独立账号、独立 Secret 和独立网络规则，未复用 TEST 配置。
-- [ ] 数据保留期限、脱敏客户文本政策、备份方式、RPO、RTO 和恢复责任已书面确认。
-- [ ] 故障主联系人、备份联系人和值班入口均已补齐。
-- [ ] 已完成停写、应用版本回退、账号锁定和数据恢复桌面演练或 TEST 演练。
-- [ ] 云监控负责人已确认共享实例/共库方案不会扩大 Incident 对云监控表的访问范围。
-
-## 9. 禁止事项
-
-- 禁止在本文或其他 Markdown、代码、SQL、日志、截图中记录真实密码、Token 或 Secret。
-- 禁止 Incident 使用云监控现有数据库账号。
-- 禁止应用账号执行 `CREATE TABLE`、`ALTER TABLE`、`DROP TABLE`、`GRANT` 或自动迁移。
-- 禁止在未审批情况下直连主库、访问正式环境或扩大到 `monitor_system.*` 全库权限。
-- 禁止将未经脱敏或未经数据合规批准的客户问题文本写入数据库。
-- 禁止把删除表、清空表作为常规应用回滚手段。
+- 禁止在代码、Markdown、SQL、日志、截图或工单描述中记录真实密码、Token 或 Secret。
+- 禁止在 Incident 代码中写死正式 Host、Port、账号或密码。
+- 禁止 Incident 应用执行 `CREATE TABLE`、`ALTER TABLE`、`DROP TABLE`、`TRUNCATE TABLE`、`GRANT` 或自动迁移。
+- 禁止 Incident 账号获得 `monitor_system.*` 全库权限。
+- 禁止绕过 ProxySQL 直连正式 MySQL 主库。
+- 禁止保存未脱敏的客户问题文本。
