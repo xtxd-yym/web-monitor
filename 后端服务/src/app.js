@@ -27,6 +27,7 @@ const OssSourceMapService = require('./services/sourcemapOss');
 const AiDailyReportService = require('./services/aiDailyReport');
 const vanishService = require('./services/vanish');
 const { SDK_PUBLIC_PATHS, setSdkAssetHeaders } = require('./services/sdkAssets');
+const { readinessHandler } = require('./services/readiness');
 
 // 导入路由
 const createErrorRoutes = require('./routes/errors');
@@ -177,15 +178,28 @@ class MonitorServer {
     setupRoutes() {
         console.log('🛓️  配置路由...');
 
+        // 容器平台固定使用 /readiness。必须在鉴权前注册，且不依赖数据库或外部服务。
+        this.app.get('/readiness', readinessHandler);
+
         // 鉴权路由（公开，无需 token）
         this.app.use('/api/auth', authRoutes);
 
         // 全局鉴权中间件（白名单在中间件内部处理）
         this.app.use(authMiddleware);
 
-        // 新的 API 路由
-        this.app.use('/api/errors', createErrorRoutes(this.models.error, this.services.sourcemap, this.models.instance, this.models.alarm, this.models.breadcrumb, this.models.appkey));
-        this.app.use('/api/config', createConfigRoutes(this.models.config, this.models.appkey));
+        // 新旧 SDK 共用同一套配置与上报处理器，避免兼容入口绕过安全和降噪策略。
+        const errorRoutes = createErrorRoutes(
+            this.models.error,
+            this.services.sourcemap,
+            this.models.instance,
+            this.models.alarm,
+            this.models.breadcrumb,
+            this.models.appkey,
+            this.models.config
+        );
+        const configRoutes = createConfigRoutes(this.models.config, this.models.appkey);
+        this.app.use('/api/errors', errorRoutes);
+        this.app.use('/api/config', configRoutes);
         this.app.use('/api/sourcemap', createSourceMapRoutes(this.services.sourcemap));
         this.app.use('/api/appkey', createAppkeyRoutes(this.models.appkey));
         this.app.use('/api/ai', createAiRoutes());
@@ -209,110 +223,9 @@ class MonitorServer {
         this.app.use('/api/instance', createInstanceRoutes(this.models.instance));
         this.app.use('/api/alarm', createAlarmRoutes(this.models.alarm));
 
-        // 兼容旧接口：告警上报
-        this.app.post('/wczj/alarm/report', async (req, res) => {
-            try {
-                const reportData = req.body;
-                console.log('收到告警上报 (WCZJ格式):', JSON.stringify(reportData, null, 2));
-
-                // 转换为统一格式
-                const errorData = {
-                    type: reportData.type || 'javascript',
-                    message: reportData.message,
-                    severity: reportData.severity || 'error',
-                    url: reportData.url,
-                    filename: reportData.filename,
-                    lineno: reportData.lineno,
-                    colno: reportData.colno,
-                    stack: reportData.stack,
-                    sdk_version: reportData.sdkVersion,
-                    project: reportData.project,
-                    env: reportData.env,
-                    customer_name: reportData.customer_name,
-                    user_agent: reportData.userAgent,
-                    breadcrumbs: reportData.breadcrumbs || [],
-                    extra_data: reportData.extraData || {},
-                    timestamp: reportData.timestamp || Date.now()
-                };
-
-                // 生成错误指纹
-                const crypto = require('crypto');
-                const fingerprintData = `${errorData.type}:${errorData.message}:${errorData.filename}:${errorData.lineno}`;
-                errorData.fingerprint = crypto.createHash('md5').update(fingerprintData).digest('hex');
-
-                // 解析 SourceMap
-                let parsedError = errorData;
-                if (errorData.sdk_version && errorData.filename) {
-                    parsedError = await this.services.sourcemap.parseError(errorData);
-                }
-
-                // 插入数据库
-                const result = this.models.error.insert(parsedError);
-
-                res.json({
-                    success: true,
-                    flag: 200,
-                    msg: '告警上报成功',
-                    data: {
-                        errorId: result.id,
-                        parsed: !!parsedError.original_filename
-                    }
-                });
-            } catch (error) {
-                console.error('处理告警上报失败:', error);
-                res.status(500).json({
-                    success: false,
-                    flag: 500,
-                    msg: 'Internal server error',
-                    error: error.message
-                });
-            }
-        });
-
-        // 兼容旧接口：获取配置
-        this.app.get('/wczj/monitor/config', async (req, res) => {
-            try {
-                const { project, env, customer_name, appkey } = req.query;
-
-                console.log('[Config API] Request:', { project, env, customer_name, appkey });
-
-                // --- AppKey 强校验拦截器（前置关闭 SDK）---
-                if (appkey && this.models.appkey) {
-                    const appkeyRecord = await this.models.appkey.findByAppkey(appkey);
-                    if (!appkeyRecord || appkeyRecord.status !== 1) {
-                        return res.json({
-                            enabled: false,
-                            appkeyInvalid: true,
-                            emergency: {
-                                closeMonitor: true,
-                                reason: 'AppKey未注册或已被禁用'
-                            }
-                        });
-                    }
-                }
-                // ----------------------------------------
-
-                // 从数据库查询配置
-                const dbConfig = this.models.config.findOne(project, env, customer_name || null);
-
-                let responseConfig;
-                if (dbConfig) {
-                    responseConfig = dbConfig.config;
-                } else {
-                    // 返回默认配置
-                    responseConfig = getDefaultConfig(env);
-                }
-
-                console.log('[Config API] Response:', JSON.stringify(responseConfig, null, 2));
-                res.json(responseConfig);
-            } catch (error) {
-                console.error('[Config API] Error:', error);
-                res.status(500).json({
-                    error: 'Failed to fetch config',
-                    code: 'INTERNAL_ERROR'
-                });
-            }
-        });
+        // 旧 URL 保留兼容，但执行与新接口完全相同的校验、采样和落库逻辑。
+        this.app.post('/wczj/alarm/report', errorRoutes.reportHandler);
+        this.app.get('/wczj/monitor/config', configRoutes.configHandler);
 
         // 健康检查
         this.app.get('/health', (req, res) => {
@@ -475,54 +388,6 @@ class MonitorServer {
             process.exit(1);
         }
     }
-}
-
-/**
- * 默认配置
- */
-function getDefaultConfig(env) {
-    return {
-        enabled: true,
-        config: {
-            enableErrorMonitoring: true,
-            enablePromiseRejection: true,
-            enableResourceErrors: true,
-            enableNetworkMonitoring: true,
-            enableXHRMonitoring: true,
-            enableFetchMonitoring: true,
-            enablePerformanceMonitoring: false,
-            enableWhiteScreenDetection: true,
-            whiteScreenConfirmations: 2,
-            whiteScreenConfirmationDelay: 1000,
-            whiteScreenRecoveryInterval: 2000,
-            whiteScreenRelatedErrorWindow: 30000,
-            whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
-            enableUserTracking: false,
-            errorSampleRate: {
-                javascript: 1.0,
-                promise: 1.0,
-                resource: 0.5,
-                network: 0.3
-            },
-            maxErrorsPerMinute: 100,
-            dedupeWindow: 300,
-            logLevel: env === 'dev' ? 'debug' : 'warn'
-        },
-        grayControl: {
-            enabled: false,
-            strategy: 'percentage',
-            percentage: 100
-        },
-        emergency: {
-            closeMonitor: false,
-            reason: null
-        },
-        meta: {
-            version: '1.0.0',
-            updatedAt: Date.now(),
-            ttl: 300
-        }
-    };
 }
 
 // 导出服务器类

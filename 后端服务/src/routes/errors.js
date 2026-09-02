@@ -10,18 +10,18 @@ const {
     normalizeLevel,
     resolveEffectiveThreshold
 } = require('../services/alarmPolicy');
+const { generateFingerprint, resolveServerDropReason } = require('../services/reportPolicy');
 const router = express.Router();
 
 
-const configModel = require('../db/models/config');
 // const sourcemapService = require('../services/sourcemap'); // Removed
 
-module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, breadcrumbModel, appkeyModel) => {
+module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, breadcrumbModel, appkeyModel, configModel) => {
     /**
      * POST /api/errors/report
      * 错误上报接口（新接口，与 /wczj/alarm/report 功能相同）
      */
-    router.post('/report', async (req, res) => {
+    const reportHandler = async (req, res) => {
         try {
             const body = req.body;
 
@@ -38,6 +38,7 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                 return res.status(403).json({ success: false, msg: 'Forbidden: Missing AppKey' });
             }
 
+            const verifiedAppkeys = new Map();
             if (appkeyModel) {
                 for (let ak of appkeysToVerify) {
                     const record = await appkeyModel.findByAppkey(ak);
@@ -47,6 +48,7 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                             msg: `Forbidden: Invalid or disabled AppKey [${ak}]`
                         });
                     }
+                    verifiedAppkeys.set(ak, record);
                 }
             }
             // ---------------------------
@@ -69,8 +71,10 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                         sdkVersion: item.sdkVersion || body.sdkVersion || '1.0.0',
 
                         // 确保 customer_name 从 body 级传递（如果 item 没有）
-                        customer_name: item.customer_name || body.customer_name || body.appkey || '', // Fallback to appkey if no customer name? User req 1 says customer name -> keys. User says "correspond to frontend customer_name"
-                        service_name: item.service_name || body.service_name || '', // Extract service_name
+                        customer_name: item.customer_name || body.customer_name ||
+                            verifiedAppkeys.get(item.appkey || body.appkey)?.customer_name || '',
+                        service_name: item.service_name || body.service_name ||
+                            verifiedAppkeys.get(item.appkey || body.appkey)?.service_name || '',
 
                         // SourceMap 相关字段
                         filename: item.filename || '',
@@ -88,14 +92,37 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
             }
 
             const results = [];
-            // 获取 SDK 版本，用于 SourceMap 解析
-            const sdkVersion = body.sdkVersion || '1.0.0';
+            const configByScope = new Map();
 
             // 遍历处理每条错误
             // 取本次上报的 appkey（用于 SourceMap 精准定位业务组件的构建产物）
-            const reportAppkey = body.appkey || '';
-
             for (const item of errorList) {
+                const reportAppkey = item.appkey || body.appkey || '';
+                const appkeyRecord = verifiedAppkeys.get(reportAppkey);
+                const reportCustomer = item.customer_name || body.customer_name ||
+                    appkeyRecord?.customer_name || '';
+                const reportService = item.service_name || body.service_name ||
+                    appkeyRecord?.service_name || '';
+                const configScopeKey = `${reportAppkey}\u0000${reportCustomer}`;
+                let matchedConfig = configByScope.get(configScopeKey);
+
+                if (matchedConfig === undefined) {
+                    matchedConfig = configModel
+                        ? await configModel.findOne(reportAppkey, reportCustomer)
+                        : null;
+                    configByScope.set(configScopeKey, matchedConfig || null);
+                }
+
+                const dropReason = resolveServerDropReason(matchedConfig?.config, item.type || 'unknown');
+                if (dropReason) {
+                    results.push({
+                        status: 'dropped',
+                        reason: dropReason,
+                        type: item.type || 'unknown'
+                    });
+                    continue;
+                }
+
                 // [TD-02] SourceMap 解析已移至 GET /:id 详情接口按需执行。
                 // 上报接口只管快速落库，original_stack 留空占位，彻底消除高并发下的 Event Loop 阻塞。
                 const originalStack = '';
@@ -109,22 +136,29 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                     // 将解析后的堆栈和页面 URL 放入 extra_data 字段
                     extra_data: JSON.stringify({
                         ...(item.data || item.expand || {}),
+                        ...(item.context || {}),
                         original_stack: '',   // [TD-02] 占位，查询详情时实时翻译
                         userAgent: item.userAgent || '',
-                        pageUrl: item.url || ''  // 页面 URL
+                        pageUrl: item.url || '',  // 页面 URL
+                        clientFingerprint: item.fingerprint || '',
+                        runtimeId: item.runtimeId || body.runtimeId || '',
+                        sdkVersion: item.sdkVersion || body.sdkVersion || '1.0.0',
+                        configVersion: item.configVersion || body.configVersion ||
+                            (matchedConfig?.updated_at ? String(matchedConfig.updated_at) : 'default'),
+                        configMatched: Boolean(matchedConfig)
                     }),
                     // filename: 优先取脚本文件名，其次取页面 URL
                     filename: item.filename || item.url || '',
                     lineno: item.lineno || 0,
                     colno: item.colno || 0,
                     // user_id: 优先取 customer_name (SDK 上报的用户名)
-                    user_id: item.customer_name || item.userId || item.user_id || '',
+                    user_id: reportCustomer || item.userId || item.user_id || '',
                     timestamp: item.timestamp || Date.now(),
                     created_at: Date.now(),
                     // 确保传递扩展业务字段，供 Model 写入 extra_data
-                    customer_name: item.customer_name || body.customer_name || '',
-                    appkey: item.appkey || body.appkey || '',
-                    service_name: item.service_name || body.service_name || ''
+                    customer_name: reportCustomer,
+                    appkey: reportAppkey,
+                    service_name: reportService
                 };
 
                 if (!errorData.type || !errorData.project || !errorData.env) {
@@ -132,7 +166,10 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                     continue;
                 }
 
-                const fingerprint = generateFingerprint(errorData);
+                const fingerprint = generateFingerprint({
+                    ...errorData,
+                    context: item.context || item.data || item.expand || {}
+                });
                 errorData.fingerprint = fingerprint;
 
                 // 插入数据库 (ErrorModel.insert 会处理去重/更新)
@@ -158,7 +195,7 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                 // ==========================================
                 try {
                     // 1. 获取该项目的告警规则
-                    const projectRules = await instanceModel.matchRules(errorData.project, body.appkey);
+                    const projectRules = await instanceModel.matchRules(errorData.project, reportAppkey);
 
                     // 2. 遍历规则进行匹配
                     for (const rule of projectRules) {
@@ -287,7 +324,10 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
                 error: error.message
             });
         }
-    });
+    };
+
+    router.post('/report', reportHandler);
+    router.reportHandler = reportHandler;
 
     /**
      * GET /api/errors/list
@@ -612,24 +652,3 @@ module.exports = (errorModel, sourcemapService, instanceModel, alarmModel, bread
 
     return router;
 };
-
-/**
- * 生成错误指纹（用于去重）
- * 对message进行标准化处理，移除动态内容（如耗时ms）
- */
-function generateFingerprint(errorData) {
-    let { type, message, filename, lineno } = errorData;
-    const crypto = require('crypto');
-
-    // 标准化 message，移除动态时间值
-    // 这样相同类型的网络错误（即使耗时不同）也能被正确合并
-    let normalizedMessage = (message || '')
-        .replace(/after \d+ms/g, 'after Xms')           // timeout after 500ms
-        .replace(/\(actual: \d+ms\)/g, '(actual: Xms)') // (actual: 300ms)
-        .replace(/耗时: \d+ms/g, '耗时: Xms')           // 请求耗时: 123ms
-        .replace(/请求耗时: \d+ms/g, '请求耗时: Xms')
-        .replace(/\d+ms内/g, 'Xms内');                   // 500ms内
-
-    const data = `${type}:${normalizedMessage}:${filename}:${lineno}`;
-    return crypto.createHash('md5').update(data).digest('hex');
-}

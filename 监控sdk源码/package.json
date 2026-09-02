@@ -1,6 +1,6 @@
 {
   "name": "web-monitor-system",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "完善的Web项目监控系统",
   "main": "src/server/server.js",
   "scripts": {

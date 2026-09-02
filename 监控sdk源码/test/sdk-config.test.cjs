@@ -114,6 +114,47 @@ test('资源和网络 URL 支持字符串及正则精准忽略', async () => {
   assert.equal(isUrlIgnored('https://example.com/api/orders', []), false);
 });
 
+test('资源指纹忽略查询参数，网络指纹保留业务参数', async () => {
+  const { buildErrorFingerprintSource } = await importSource('src/core/config-utils.js');
+
+  assert.equal(
+    buildErrorFingerprintSource({
+      type: 'resource',
+      resource: 'https://s.thsi.cn/js/chameleon/time.js?_abfpc=1'
+    }),
+    buildErrorFingerprintSource({
+      type: 'resource',
+      resource: 'https://s.thsi.cn/js/chameleon/time.js?_abfpc=2'
+    })
+  );
+
+  assert.equal(
+    buildErrorFingerprintSource({
+      type: 'network-xhr-error',
+      method: 'GET',
+      data: { url: 'https://api.example.com/orders?id=1&_abfpc=a' }
+    }),
+    buildErrorFingerprintSource({
+      type: 'network-xhr-error',
+      method: 'GET',
+      data: { url: 'https://api.example.com/orders?id=1&_abfpc=b' }
+    })
+  );
+
+  assert.notEqual(
+    buildErrorFingerprintSource({
+      type: 'network-xhr-error',
+      method: 'GET',
+      data: { url: 'https://api.example.com/orders?id=1' }
+    }),
+    buildErrorFingerprintSource({
+      type: 'network-xhr-error',
+      method: 'GET',
+      data: { url: 'https://api.example.com/orders?id=2' }
+    })
+  );
+});
+
 test('网络拦截只安装已开启的 XHR 或 Fetch 部分', async t => {
   const networkModule = await loadModule(
     path.join(__dirname, '..', 'src/core/modules/network-monitor.js')

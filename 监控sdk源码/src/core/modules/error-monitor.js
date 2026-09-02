@@ -5,7 +5,12 @@
 
 import { sanitizeError } from '../../utils/sanitizer.js';
 import { isLocalEnv } from '../../utils/env.js';
-import { isErrorTypeEnabled, isUrlIgnored, resolveSamplingRate } from '../config-utils.js';
+import {
+  buildErrorFingerprintSource,
+  isErrorTypeEnabled,
+  isUrlIgnored,
+  resolveSamplingRate
+} from '../config-utils.js';
 import { buildBreadcrumbs } from './diagnostics.js';
 
 /**
@@ -15,25 +20,10 @@ import { buildBreadcrumbs } from './diagnostics.js';
  * @returns {string} 错误指纹
  */
 function generateErrorFingerprint(error) {
-  // 对 message 进行标准化处理，移除动态内容
-  // 比如: "timeout after 500ms" 中的数字会导致每次指纹不同
-  let normalizedMessage = error.message || '';
-
-  // 移除动态时间值 (如 "after 500ms", "耗时: 123ms" 等)
-  normalizedMessage = normalizedMessage
-    .replace(/after \d+ms/g, 'after Xms')           // timeout after 500ms
-    .replace(/\(actual: \d+ms\)/g, '(actual: Xms)') // (actual: 300ms)
-    .replace(/耗时: \d+ms/g, '耗时: Xms')           // 请求耗时: 123ms
-    .replace(/请求耗时: \d+ms/g, '请求耗时: Xms')
-    .replace(/\d+ms内/g, 'Xms内');                   // 500ms内
-
-  const key = [
-    error.type || 'unknown',
-    normalizedMessage,
-    error.filename || '',
-    error.lineno || 0,
-    getStackSignature(error.stack)
-  ].filter(Boolean).join('|');
+  const key = buildErrorFingerprintSource({
+    ...error,
+    stack: getStackSignature(error.stack)
+  });
 
   return simpleHash(key);
 }
@@ -77,23 +67,13 @@ async function handleConfigRefresh(monitor, response) {
   console.warn('[Monitor] Config refresh requested:', response.reason || 'Config changed');
 
   try {
-    // 清除配置缓存
-    if (monitor.clearConfigCache) {
-      monitor.clearConfigCache();
+    if (typeof monitor.options.refreshConfig !== 'function') {
+      console.warn('[Monitor] Config refresh callback is not available');
+      return;
     }
 
-    // 重新获取配置
-    const newConfig = await monitor.getConfig();
-
-    // 检查是否需要关闭监控
-    if (!newConfig.enabled || newConfig.emergency?.closeMonitor) {
-      console.error('[Monitor] Emergency shutdown triggered by new config');
-      if (monitor.closeMonitor) {
-        monitor.closeMonitor();
-      }
-    } else {
-      console.log('[Monitor] Config refreshed successfully');
-    }
+    await monitor.options.refreshConfig();
+    console.log('[Monitor] Config refreshed successfully');
   } catch (error) {
     console.error('[Monitor] Failed to refresh config:', error);
   }
@@ -548,6 +528,9 @@ export async function reportErrors(monitor, errorType) {
     const reportData = {
       appkey: monitor.options.apiParams.appKey || '',
       sdkVersion: typeof __SDK_VERSION__ !== 'undefined' ? __SDK_VERSION__ : 'development',
+      runtimeId: monitor.options.runtimeId || '',
+      configVersion: monitor.options.configVersion || '',
+      configMatched: monitor.options.configMatched === true,
       list: errorsToReport.map(error => ({
         customer_name: monitor.options.apiParams.customer_name || '',
         service_name: monitor.options.apiParams.service_name || '',
@@ -562,10 +545,20 @@ export async function reportErrors(monitor, errorType) {
         filename: error.filename || '',          // 文件名 (用于 SourceMap 解析)
         lineno: error.lineno || 0,               // 行号
         colno: error.colno || 0,                 // 列号
+        fingerprint: error.fingerprint || '',
+        deduplicationCount: error.deduplicationCount || 1,
 
         // --- 辅助/保留字段 ---
         alarm_detail: getAlarmDetailByErrorType(error.type),
         expand: error.type === 'performance' ? error.data || {} : {},
+        context: {
+          targetUrl: error.resource || error.data?.url || '',
+          method: error.method || error.data?.method || '',
+          status: error.status ?? error.data?.status ?? null,
+          errorType: error.errorType || error.data?.errorType || '',
+          duration: error.duration ?? error.data?.duration ?? null,
+          timeout: error.timeout ?? error.data?.timeout ?? null
+        },
         url: error.url || window.location.href,
         userAgent: error.userAgent || navigator.userAgent,
         userId: error.userId || monitor.getUserId(),

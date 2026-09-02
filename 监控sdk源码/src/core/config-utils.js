@@ -105,3 +105,80 @@ export function createConfigCacheKey(options = {}) {
 
   return `web_monitor_config:${scope.map(value => encodeURIComponent(String(value))).join(':')}`;
 }
+
+const VOLATILE_QUERY_PARAMS = new Set([
+  '_',
+  '_abfpc',
+  'cacheBust',
+  'cache_bust',
+  't',
+  'timestamp',
+  'ts'
+]);
+
+function extractTargetUrl(error = {}) {
+  const structuredUrl = error.resource || error.data?.url || error.targetUrl;
+  if (structuredUrl) return String(structuredUrl);
+
+  const message = String(error.message || '');
+  const requestUrlMatch = message.match(/请求URL:\s*(https?:\/\/[^\s|]+)/i);
+  if (requestUrlMatch) return requestUrlMatch[1].replace(/[)'"，。]+$/, '');
+
+  const quotedUrlMatch = message.match(/'(https?:\/\/[^']+)'/i);
+  return quotedUrlMatch ? quotedUrlMatch[1] : '';
+}
+
+export function normalizeFingerprintUrl(rawUrl, errorType = '') {
+  if (!rawUrl) return '';
+
+  try {
+    const url = new URL(String(rawUrl), typeof window !== 'undefined' ? window.location.href : undefined);
+    url.hash = '';
+
+    if (errorType === 'resource') {
+      url.search = '';
+      return url.href;
+    }
+
+    for (const key of [...url.searchParams.keys()]) {
+      if (VOLATILE_QUERY_PARAMS.has(key)) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.searchParams.sort();
+    return url.href;
+  } catch (_) {
+    return String(rawUrl).replace(/[?#].*$/, '');
+  }
+}
+
+export function buildErrorFingerprintSource(error = {}) {
+  const type = error.type || 'unknown';
+  const targetUrl = normalizeFingerprintUrl(extractTargetUrl(error), type);
+
+  if (type === 'resource' || isNetworkErrorType(type)) {
+    return [
+      type,
+      String(error.method || error.data?.method || '').toUpperCase(),
+      targetUrl,
+      error.status ?? error.data?.status ?? '',
+      error.errorType || error.data?.errorType || '',
+      error.filename || '',
+      error.lineno || 0
+    ].join('|');
+  }
+
+  let normalizedMessage = String(error.message || '')
+    .replace(/after \d+ms/g, 'after Xms')
+    .replace(/\(actual: \d+ms\)/g, '(actual: Xms)')
+    .replace(/(?:请求)?耗时:\s*\d+ms/g, '耗时: Xms')
+    .replace(/\d+ms内/g, 'Xms内');
+
+  return [
+    type,
+    normalizedMessage,
+    error.filename || '',
+    error.lineno || 0,
+    error.stack || ''
+  ].join('|');
+}

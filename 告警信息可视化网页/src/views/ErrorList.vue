@@ -48,6 +48,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="error_message" label="错误信息" min-width="300" show-overflow-tooltip />
+        <el-table-column label="来源" min-width="180" show-overflow-tooltip>
+          <template #default="scope">
+            <div>{{ scope.row.parsedData?.service_name || scope.row.parsedData?.customer_name || '-' }}</div>
+            <div class="source-meta">{{ scope.row.parsedData?.appkey || '-' }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="SDK" width="90" align="center">
+          <template #default="scope">
+            {{ scope.row.parsedData?.sdkVersion || '旧版/未知' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="updated_at" label="最近发生" width="180">
           <template #default="scope">
             {{ new Date(scope.row.updated_at).toLocaleString() }}
@@ -96,6 +107,18 @@
           </el-descriptions-item>
           <el-descriptions-item label="组件名">
               {{ currentError.parsedData?.service_name || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="SDK 版本">
+              {{ currentError.parsedData?.sdkVersion || '旧版/未知' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="配置版本">
+              {{ currentError.parsedData?.configVersion || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="运行实例">
+              {{ currentError.parsedData?.runtimeId || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="目标 URL">
+              {{ currentError.parsedData?.targetUrl || '-' }}
           </el-descriptions-item>
 
           <el-descriptions-item label="时间">{{ new Date(currentError.created_at).toLocaleString() }}</el-descriptions-item>
@@ -364,6 +387,11 @@ const handleDelete = async (row) => {
   display: flex;
   justify-content: flex-end;
   flex-shrink: 0;
+}
+
+.source-meta {
+  color: #909399;
+  font-size: 12px;
 }
 
 .code-block {

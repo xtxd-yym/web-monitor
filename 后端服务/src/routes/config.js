@@ -13,9 +13,10 @@ module.exports = (configModel, appkeyModel) => {
      * 1. appkey + customer_name (推荐)
      * 2. project + env + customer_name (向后兼容)
      */
-    router.get('/', async (req, res) => {
+    const configHandler = async (req, res) => {
         try {
             const { appkey, customer_name, project, env } = req.query;
+            res.setHeader('Cache-Control', 'no-store');
 
             // 方式1: appkey + customer_name
             if (appkey) {
@@ -42,6 +43,11 @@ module.exports = (configModel, appkeyModel) => {
                     deepMerge(finalConfig, config.config);
                 }
 
+                applyResponseMetadata(finalConfig, req.query, config, {
+                    appkey,
+                    customer_name: customer_name || ''
+                });
+
                 return res.json(finalConfig);
             }
 
@@ -60,6 +66,12 @@ module.exports = (configModel, appkeyModel) => {
                 deepMerge(finalConfig, configs[0].config);
             }
 
+            applyResponseMetadata(finalConfig, req.query, configs?.[0] || null, {
+                project,
+                env,
+                customer_name: customer_name || ''
+            });
+
             res.json(finalConfig);
         } catch (error) {
             console.error('获取配置失败:', error);
@@ -69,7 +81,10 @@ module.exports = (configModel, appkeyModel) => {
                 error: error.message
             });
         }
-    });
+    };
+
+    router.get('/', configHandler);
+    router.configHandler = configHandler;
 
     /**
      * POST /api/config/update
@@ -236,6 +251,21 @@ module.exports = (configModel, appkeyModel) => {
     return router;
 };
 
+function applyResponseMetadata(config, query, matchedConfig, scope) {
+    const updatedAt = matchedConfig?.updated_at || 0;
+    const configVersion = updatedAt ? String(updatedAt) : 'default';
+    config.meta = {
+        ...(config.meta || {}),
+        version: configVersion,
+        schemaVersion: '1',
+        requestedSdkVersion: query.version || 'unknown',
+        configVersion,
+        configMatched: Boolean(matchedConfig),
+        matchedScope: scope,
+        servedAt: Date.now()
+    };
+}
+
 /**
  * 深度合并对象
  */
@@ -294,7 +324,9 @@ function getDefaultConfig() {
             reason: null
         },
         meta: {
-            version: '1.0.0',
+            version: 'default',
+            configVersion: 'default',
+            configMatched: false,
             updatedAt: Date.now(),
             ttl: 300
         }

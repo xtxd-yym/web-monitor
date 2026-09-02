@@ -69,7 +69,12 @@ export async function reportPerformanceData(monitor) {
     // 构建新的上报数据格式
     const reportData = {
       appkey: monitor.options.apiParams.appKey || '',
+      sdkVersion: typeof __SDK_VERSION__ !== 'undefined' ? __SDK_VERSION__ : 'development',
+      runtimeId: monitor.options.runtimeId || '',
+      configVersion: monitor.options.configVersion || '',
+      configMatched: monitor.options.configMatched === true,
       list: [{
+        type: 'performance',
         customer_name: monitor.options.apiParams.customer_name || '',
         alarm_detail: '性能异常',
         service_name: monitor.options.apiParams.service_name || '',

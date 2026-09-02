@@ -234,6 +234,9 @@ async function sendWhiteScreenReport(monitor, item, callbackPayload) {
     const reportData = {
       appkey: monitor.options.apiParams.appKey || '',
       sdkVersion: typeof __SDK_VERSION__ !== 'undefined' ? __SDK_VERSION__ : 'development',
+      runtimeId: monitor.options.runtimeId || '',
+      configVersion: monitor.options.configVersion || '',
+      configMatched: monitor.options.configMatched === true,
       list: [item]
     };
     const response = typeof monitor.options.monitorReport === 'function'

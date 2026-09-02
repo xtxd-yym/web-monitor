@@ -90,6 +90,82 @@ test('实际捕获链路遵守零采样率和类型开关', async t => {
   assert.equal(limiterCalls, 0);
 });
 
+test('动态配置变为关闭时清理运行中的监听实例', async () => {
+  const sdkModule = await loadModule(path.join(__dirname, '..', 'src/core/monitor_sdk.js'));
+  const DynamicWebMonitor = sdkModule.namespace.DynamicWebMonitor;
+  const monitor = new DynamicWebMonitor({ apiParams: { appKey: 'app-refresh' } });
+  let cleaned = false;
+  monitor.monitor = {
+    cleanup() {
+      cleaned = true;
+    }
+  };
+
+  const changed = await monitor.applyDynamicConfig({
+    enabled: false,
+    emergency: { closeMonitor: true },
+    meta: { configVersion: '2' }
+  });
+
+  assert.equal(changed, true);
+  assert.equal(cleaned, true);
+  assert.equal(monitor.monitor, null);
+  assert.equal(monitor.isClosed, true);
+});
+
+test('配置刷新失败时使用过期的最后成功配置而不是开启网络噪声默认值', async t => {
+  const sdkModule = await loadModule(path.join(__dirname, '..', 'src/core/monitor_sdk.js'));
+  const DynamicWebMonitor = sdkModule.namespace.DynamicWebMonitor;
+  const originalLocalStorage = global.localStorage;
+  const staleConfig = {
+    enabled: true,
+    config: { samplingRates: { resource: 0, network: 0 } },
+    meta: { ttl: 1, configVersion: 'old' }
+  };
+  global.localStorage = {
+    getItem: () => JSON.stringify({ data: staleConfig, timestamp: 0 }),
+    setItem: () => {},
+    removeItem: () => {}
+  };
+  t.after(() => {
+    global.localStorage = originalLocalStorage;
+  });
+
+  const monitor = new DynamicWebMonitor({
+    configUrl: 'https://monitor.example.com/api/config',
+    apiParams: { appKey: 'app-stale' }
+  });
+  monitor.fetchConfigWithRetry = async () => {
+    throw new Error('offline');
+  };
+
+  const config = await monitor.getConfig(true);
+  assert.deepEqual(config, staleConfig);
+});
+
+test('同一配置范围的重复 SDK 初始化复用唯一运行实例', async t => {
+  const sdkModule = await loadModule(path.join(__dirname, '..', 'src/core/monitor_sdk.js'));
+  const DynamicWebMonitor = sdkModule.namespace.DynamicWebMonitor;
+  const originalWindow = global.window;
+  global.window = {};
+  t.after(() => {
+    global.window = originalWindow;
+  });
+
+  const options = {
+    project: 'monitor',
+    env: 'production',
+    apiParams: { appKey: 'app-singleton', customer_name: '客户A' }
+  };
+  const first = new DynamicWebMonitor({ ...options, apiParams: { ...options.apiParams } });
+  const second = new DynamicWebMonitor({ ...options, apiParams: { ...options.apiParams } });
+
+  assert.equal(first.claimRuntime(), null);
+  assert.equal(second.claimRuntime(), first);
+  assert.equal(second.delegate, first);
+  first.closeMonitor();
+});
+
 test('白屏必须连续确认两次，恢复后记录持续时间并允许新事件', async () => {
   const whiteScreenModule = await loadModule(
     path.join(__dirname, '..', 'src/core/modules/white-screen-monitor.js')

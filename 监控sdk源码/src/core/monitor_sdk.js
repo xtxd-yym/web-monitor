@@ -29,10 +29,47 @@ class DynamicWebMonitor {
     this.configCache = null;
     this.cacheKey = createConfigCacheKey(options);
     this.isClosed = false;
+    this.isDisposed = false;
+    this.refreshTimer = null;
+    this.activeConfigSignature = '';
+    this.activeConfig = null;
+    this.delegate = null;
+    this.runtimeId = `wm-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    this.fetchImpl = options.fetchImpl || (
+      typeof window !== 'undefined' && typeof window.fetch === 'function'
+        ? window.fetch.bind(window)
+        : (typeof fetch === 'function' ? fetch : null)
+    );
   }
 
   // 静态变量：全局请求去重
   static pendingConfigRequests = new Map();
+
+  getRuntimeRegistry() {
+    if (typeof window === 'undefined') return null;
+    const registryKey = Symbol.for('web-monitor.runtime-registry');
+    if (!window[registryKey]) {
+      window[registryKey] = new Map();
+    }
+    return window[registryKey];
+  }
+
+  claimRuntime() {
+    const registry = this.getRuntimeRegistry();
+    if (!registry) return null;
+
+    const existing = registry.get(this.cacheKey);
+    if (existing && existing !== this && !existing.isDisposed) {
+      this.delegate = existing;
+      console.warn(
+        `[Monitor] Duplicate runtime ignored for ${this.cacheKey}; using ${existing.runtimeId}`
+      );
+      return existing;
+    }
+
+    registry.set(this.cacheKey, this);
+    return null;
+  }
 
   // 配置校验
   validateConfig(config) {
@@ -129,8 +166,14 @@ class DynamicWebMonitor {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超时
 
-        const response = await fetch(url, {
+        if (!this.fetchImpl) {
+          throw new Error('Fetch API is not available');
+        }
+
+        const response = await this.fetchImpl(url, {
           method: 'GET',
+          cache: 'no-store',
+          credentials: 'omit',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -172,17 +215,17 @@ class DynamicWebMonitor {
         whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
         enableErrorMonitoring: true,
         enableNetworkMonitoring: true,
-        reportResourceErrors: true,
-        enableXHRMonitoring: true,
-        enableFetchMonitoring: true,
+        enableResourceErrors: false,
+        reportResourceErrors: false,
+        enableXHRMonitoring: false,
+        enableFetchMonitoring: false,
         enablePromiseRejection: true,
-        enableUserTracking: true,
-        enableUserTracking: true,
+        enableUserTracking: false,
         samplingRates: {
           javascript: 1.0,
           promise: 1.0,
-          resource: 0.5,
-          network: 0.3
+          resource: 0,
+          network: 0
         },
         ignoreResourceUrls: [],
         ignoreNetworkUrls: [],
@@ -195,6 +238,8 @@ class DynamicWebMonitor {
       },
       meta: {
         version: 'fallback',
+        configVersion: 'fallback',
+        configMatched: false,
         updatedAt: Date.now(),
         ttl: 300
       }
@@ -202,7 +247,7 @@ class DynamicWebMonitor {
   }
 
   // 获取配置（优化版）
-  async getConfig() {
+  async getConfig(forceRefresh = false) {
     const { configUrl, project, env, cache = true } = this.options;
 
     if (!configUrl) {
@@ -210,19 +255,16 @@ class DynamicWebMonitor {
       return this.getFallbackConfig();
     }
 
-    // ===== 优化1: 动态TTL检查缓存 =====
-    if (cache && this.configCache) {
-      return this.configCache;
-    }
-
+    let cachedEntry = null;
     if (cache) {
       const cached = localStorage.getItem(this.cacheKey);
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
+          cachedEntry = parsed;
           const ttl = (parsed.data.meta?.ttl || 300) * 1000; // 动态TTL
 
-          if (Date.now() - parsed.timestamp < ttl) {
+          if (!forceRefresh && Date.now() - parsed.timestamp < ttl) {
             console.log(`[Config] Using cached config (TTL: ${ttl / 1000}s)`);
             this.configCache = parsed.data;
             return this.configCache;
@@ -244,7 +286,7 @@ class DynamicWebMonitor {
 
     // 发起新请求
     console.log('[Config] Fetching from server...');
-    const configRequest = (async () => {
+    const configRequest = Promise.resolve().then(async () => {
       try {
         const params = new URLSearchParams({
           project: project || 'default',
@@ -252,8 +294,8 @@ class DynamicWebMonitor {
           customer_name: this.options.apiParams?.customer_name || '',
           appkey: this.options.apiParams?.appKey || this.options.apiParams?.appkey || '',
           version: SDK_VERSION,
-          url: window.location.href,
-          userAgent: navigator.userAgent
+          url: typeof window !== 'undefined' ? window.location.href : '',
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
         });
 
         // ===== 优化7: 超时和重试 =====
@@ -263,16 +305,6 @@ class DynamicWebMonitor {
         if (!this.validateConfig(config)) {
           console.warn('[Config] Validation failed, using fallback');
           return this.getFallbackConfig();
-        }
-
-        // ===== 优化4: 灰度判断 =====
-        if (!this.shouldEnableMonitoring(config)) {
-          console.log('[Config] Monitoring disabled by gray control');
-          // 返回一个disabled的配置
-          return {
-            ...config,
-            enabled: false
-          };
         }
 
         // 存入缓存
@@ -288,13 +320,22 @@ class DynamicWebMonitor {
         return config;
       } catch (error) {
         console.error('[Config] Failed to fetch config:', error);
+        if (cachedEntry?.data && this.validateConfig(cachedEntry.data)) {
+          console.warn('[Config] Using stale last-known-good config');
+          this.configCache = cachedEntry.data;
+          return cachedEntry.data;
+        }
+        if (this.configCache && this.validateConfig(this.configCache)) {
+          console.warn('[Config] Using in-memory last-known-good config');
+          return this.configCache;
+        }
         return this.getFallbackConfig();
       } finally {
         if (DynamicWebMonitor.pendingConfigRequests.get(this.cacheKey) === configRequest) {
           DynamicWebMonitor.pendingConfigRequests.delete(this.cacheKey);
         }
       }
-    })();
+    });
 
     DynamicWebMonitor.pendingConfigRequests.set(this.cacheKey, configRequest);
     return await configRequest;
@@ -302,82 +343,33 @@ class DynamicWebMonitor {
 
   // 初始化监控
   async init() {
+    const existing = this.claimRuntime();
+    if (existing) {
+      return existing.initPromise || true;
+    }
+
+    this.initPromise = this.initializeRuntime();
+    return await this.initPromise;
+  }
+
+  async initializeRuntime() {
     try {
       let dynamicConfig = await this.getConfig();
 
-      // 检查配置是否有效，无效时使用降级配置
-      if (!dynamicConfig || typeof dynamicConfig !== 'object') {
-        console.warn('Invalid config format, using fallback defaults');
-        dynamicConfig = {
-          enabled: true,
-          config: {
-            // 性能上报：关
-            enablePerformanceMonitoring: false,
-            // 白屏检测：开
-            enableWhiteScreenDetection: true,
-            whiteScreenConfirmations: 2,
-            whiteScreenConfirmationDelay: 1000,
-            whiteScreenRecoveryInterval: 2000,
-            whiteScreenRelatedErrorWindow: 30000,
-            whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
-            // JS报错检测：开
-            enableErrorMonitoring: true,
-            // 接口获取失败（404等）：开
-            enableNetworkMonitoring: true,
-            // 资源请求失败：开
-            reportResourceErrors: true,
-            // 其余xhr fetch等其他检测：关
-            enableXHRMonitoring: false,
-            enableFetchMonitoring: false
-          }
-        };
+      if (!this.validateConfig(dynamicConfig)) {
+        console.warn('Invalid config format, using conservative fallback defaults');
+        dynamicConfig = this.getFallbackConfig();
       }
 
-      if (!dynamicConfig.enabled || dynamicConfig.emergency?.closeMonitor) {
-        console.log('Monitoring disabled by dynamic configuration');
-        this.monitor = null;
-        this.isClosed = true;
-        return true;
-      }
-
-      // 合并动态配置和用户配置
-      const finalConfig = {
-        ...this.options,
-        ...dynamicConfig.config
-      };
-
-      this.monitor = new WebMonitor(finalConfig);
-      await this.monitor.init();
-
+      await this.applyDynamicConfig(dynamicConfig);
+      this.scheduleConfigRefresh(dynamicConfig);
       return true;
     } catch (error) {
-      console.error('Failed to initialize dynamic monitor, using fallback defaults:', error);
-      // 发生异常时也使用降级配置
-      const fallbackConfig = {
-        ...this.options,
-        // 性能上报：关
-        enablePerformanceMonitoring: false,
-        // 白屏检测：开
-        enableWhiteScreenDetection: true,
-        whiteScreenConfirmations: 2,
-        whiteScreenConfirmationDelay: 1000,
-        whiteScreenRecoveryInterval: 2000,
-        whiteScreenRelatedErrorWindow: 30000,
-        whiteScreenRootSelectors: ['#app', '#root', '[id^="app"]', '.app', '.container', 'main'],
-        // JS报错检测：开
-        enableErrorMonitoring: true,
-        // 接口获取失败（404等）：开
-        enableNetworkMonitoring: true,
-        // 资源请求失败：开
-        reportResourceErrors: true,
-        // 其余xhr fetch等其他检测：关
-        enableXHRMonitoring: false,
-        enableFetchMonitoring: false
-      };
-
+      console.error('Failed to initialize dynamic monitor, using conservative fallback defaults:', error);
       try {
-        this.monitor = new WebMonitor(fallbackConfig);
-        await this.monitor.init();
+        const fallback = this.getFallbackConfig();
+        await this.applyDynamicConfig(fallback);
+        this.scheduleConfigRefresh(fallback);
         return true;
       } catch (fallbackError) {
         console.error('Failed to initialize with fallback config:', fallbackError);
@@ -386,16 +378,91 @@ class DynamicWebMonitor {
     }
   }
 
+  buildConfigSignature(config) {
+    return JSON.stringify({
+      enabled: config.enabled,
+      config: config.config,
+      grayControl: config.grayControl,
+      emergency: config.emergency,
+      configVersion: config.meta?.configVersion || config.meta?.version || ''
+    });
+  }
+
+  async applyDynamicConfig(dynamicConfig) {
+    const signature = this.buildConfigSignature(dynamicConfig);
+    if (signature === this.activeConfigSignature) return false;
+
+    if (this.monitor?.cleanup) {
+      this.monitor.cleanup();
+    }
+    this.monitor = null;
+    this.activeConfig = dynamicConfig;
+    this.activeConfigSignature = signature;
+
+    if (!dynamicConfig.enabled || dynamicConfig.emergency?.closeMonitor || !this.shouldEnableMonitoring(dynamicConfig)) {
+      console.log('Monitoring disabled by dynamic configuration');
+      this.isClosed = true;
+      return true;
+    }
+
+    const finalConfig = {
+      ...this.options,
+      ...dynamicConfig.config,
+      runtimeId: this.runtimeId,
+      configVersion: dynamicConfig.meta?.configVersion || dynamicConfig.meta?.version || '',
+      configMatched: dynamicConfig.meta?.configMatched === true,
+      refreshConfig: () => this.refreshConfig()
+    };
+
+    this.monitor = new WebMonitor(finalConfig);
+    await this.monitor.init();
+    this.isClosed = false;
+    return true;
+  }
+
+  scheduleConfigRefresh(config = this.activeConfig) {
+    if (!this.options.configUrl || this.isDisposed) return;
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+
+    const configuredInterval = Number(this.options.configRefreshIntervalMs);
+    const ttlMs = Number(config?.meta?.ttl || 300) * 1000;
+    const baseInterval = Number.isFinite(configuredInterval) && configuredInterval > 0
+      ? configuredInterval
+      : Math.max(30000, ttlMs);
+    const jitter = Math.floor(baseInterval * Math.random() * 0.1);
+
+    this.refreshTimer = setTimeout(() => {
+      this.refreshConfig().catch(error => {
+        console.error('[Config] Scheduled refresh failed:', error);
+      });
+    }, baseInterval + jitter);
+    if (typeof this.refreshTimer.unref === 'function') this.refreshTimer.unref();
+  }
+
+  async refreshConfig() {
+    if (this.delegate) return this.delegate.refreshConfig();
+    if (this.isDisposed) return false;
+
+    const dynamicConfig = await this.getConfig(true);
+    if (!this.validateConfig(dynamicConfig)) return false;
+    const changed = await this.applyDynamicConfig(dynamicConfig);
+    this.scheduleConfigRefresh(dynamicConfig);
+    return changed;
+  }
+
   // 代理方法到实际的monitor实例
   getUserId() {
+    if (this.delegate) return this.delegate.getUserId();
     return this.monitor ? this.monitor.getUserId() : null;
   }
 
   captureError(error) {
+    if (this.delegate) return this.delegate.captureError(error);
     return this.monitor ? this.monitor.captureError(error) : null;
   }
 
   reportErrors(errorType) {
+    if (this.delegate) return this.delegate.reportErrors(errorType);
     if (this.isClosed) return null;
     if (!this.monitor) return null;
 
@@ -408,17 +475,24 @@ class DynamicWebMonitor {
   }
 
   reportPerformanceData() {
+    if (this.delegate) return this.delegate.reportPerformanceData();
     if (this.isClosed) return null;
     return this.monitor ? this.monitor.reportPerformanceData() : null;
   }
 
   reportWhiteScreenError(error) {
+    if (this.delegate) return this.delegate.reportWhiteScreenError(error);
     if (this.isClosed) return null;
     return this.monitor ? this.monitor.reportWhiteScreenError(error) : null;
   }
 
   // 立即关闭监控
   closeMonitor() {
+    if (this.delegate) return;
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
     if (this.monitor) {
       // 清理所有事件监听器和监控资源
       if (this.monitor.cleanup) {
@@ -428,6 +502,9 @@ class DynamicWebMonitor {
       this.isClosed = true;
       console.log('监控体系已根据服务端指令关闭');
     }
+    this.isDisposed = true;
+    const registry = this.getRuntimeRegistry();
+    if (registry?.get(this.cacheKey) === this) registry.delete(this.cacheKey);
   }
 
   // 清理缓存
