@@ -8,6 +8,9 @@ const isProd = process.env.NODE_ENV === 'production';
 if (isProd && !process.env.JWT_SECRET) {
     throw new Error('[AUTH] 生产环境必须通过环境变量 JWT_SECRET 配置 JWT 签名密钥，拒绝启动！');
 }
+if (isProd && !process.env.ADMIN_PASS) {
+    throw new Error('[AUTH] 生产环境必须通过环境变量 ADMIN_PASS 配置管理员密码，拒绝启动！');
+}
 
 // 生产环境数据库配置
 // ⚠️ 所有敏感值必须通过环境变量注入，请勿在此硬编码真实密码
@@ -33,11 +36,11 @@ module.exports = {
         path: process.env.DB_PATH || './database/monitor.db',
 
         // MySQL 配置
-        // 逻辑：优先读环境变量 -> 其次读硬编码的生产配置(仅限生产环境) -> 最后回退到本地默认
+        // 凭证只读环境变量，生产占位配置不包含真实凭证。
         host: process.env.DB_HOST || (isProd ? PROD_DB.host : 'localhost'),
         port: process.env.DB_PORT || (isProd ? PROD_DB.port : 3306),
         user: process.env.DB_USER || (isProd ? PROD_DB.user : 'root'),
-        password: process.env.DB_PASSWORD || (isProd ? PROD_DB.password : 'root'),
+        password: process.env.DB_PASSWORD || '',
         database: process.env.DB_NAME || (isProd ? PROD_DB.database : 'monitor_system'),
         timezone: process.env.DB_TIMEZONE || '+08:00'
     },
@@ -100,9 +103,9 @@ module.exports = {
     // 管理员鉴权配置
     auth: {
         username: process.env.ADMIN_USER || 'admin',
-        password: process.env.ADMIN_PASS || 'admin',
-        // 开发环境有 fallback 默认值；生产环境必须设置 JWT_SECRET 环境变量（见上方强校验）
-        jwtSecret: process.env.JWT_SECRET || 'monitor-dev-secret-do-not-use-in-prod',
+        password: process.env.ADMIN_PASS || '',
+        // 不提供默认密码或 JWT 签名密钥；未配置时登录接口安全拒绝。
+        jwtSecret: process.env.JWT_SECRET || '',
         tokenExpire: '24h',
         cookieName: 'monitor_token'
     },

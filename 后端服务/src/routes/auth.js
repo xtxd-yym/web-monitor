@@ -8,6 +8,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const serverConfig = require('../config/server');
+const { parseCookieToken } = require('../services/authCookie');
 
 const router = express.Router();
 
@@ -16,13 +17,16 @@ const router = express.Router();
  * 登录接口，校验账号密码，成功后写入 HttpOnly Cookie
  */
 router.post('/login', (req, res) => {
-    const { username, password } = req.body;
+    const { username, password } = req.body || {};
 
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
         return res.status(400).json({ success: false, msg: '请输入用户名和密码' });
     }
 
     const { auth } = serverConfig;
+    if (!auth.password || !auth.jwtSecret) {
+        return res.status(503).json({ success: false, msg: '登录服务未配置，请联系管理员' });
+    }
     if (username !== auth.username || password !== auth.password) {
         return res.status(401).json({ success: false, msg: '用户名或密码错误' });
     }
@@ -31,15 +35,15 @@ router.post('/login', (req, res) => {
     const token = jwt.sign(
         { username, role: 'admin' },
         auth.jwtSecret,
-        { expiresIn: auth.tokenExpire }
+        { expiresIn: auth.tokenExpire, algorithm: 'HS256' }
     );
 
     // 写入 HttpOnly Cookie（前端 JS 无法读取，防止 XSS 窃取）
     // COOKIE_SECURE=true 仅在 HTTPS 正式环境设置，测试环境（HTTP）保持 false
-    const cookieSecure = process.env.COOKIE_SECURE === 'true';
+    const cookieSecure = process.env.COOKIE_SECURE === 'true' || serverConfig.env === 'production';
     res.cookie(auth.cookieName, token, {
         httpOnly: true,               // JS 不可读
-        secure: cookieSecure,         // 生产 HTTPS 时由运维设置 COOKIE_SECURE=true
+        secure: cookieSecure,         // 生产环境强制 HTTPS Cookie
         sameSite: 'lax',              // 防 CSRF
         maxAge: 24 * 60 * 60 * 1000  // 24 小时
     });
@@ -65,26 +69,16 @@ router.post('/logout', (req, res) => {
  * 验证当前登录态（前端路由守卫初始化时调用）
  */
 router.get('/me', (req, res) => {
-    const token = parseCookieToken(req);
+    const token = parseCookieToken(req, serverConfig.auth.cookieName);
     if (!token) {
         return res.status(401).json({ success: false, msg: '未登录' });
     }
     try {
-        const payload = jwt.verify(token, serverConfig.auth.jwtSecret);
+        const payload = jwt.verify(token, serverConfig.auth.jwtSecret, { algorithms: ['HS256'] });
         res.json({ success: true, data: { username: payload.username } });
     } catch (e) {
         res.status(401).json({ success: false, msg: 'Token 已过期，请重新登录' });
     }
 });
-
-/**
- * 从请求中解析 Cookie Token（不依赖 cookie-parser）
- */
-function parseCookieToken(req) {
-    const raw = req.headers.cookie || '';
-    const name = serverConfig.auth.cookieName;
-    const match = raw.split(';').map(s => s.trim()).find(s => s.startsWith(name + '='));
-    return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
-}
 
 module.exports = router;

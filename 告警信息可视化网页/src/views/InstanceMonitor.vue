@@ -59,7 +59,6 @@
         style="width: 100%"
         v-loading="loading"
       >
-      >
         <el-table-column prop="instance_id" label="ID" width="120" fixed show-overflow-tooltip />
         <el-table-column prop="instance_name" label="名称" width="150" show-overflow-tooltip />
         <el-table-column prop="project" label="项目" width="120" show-overflow-tooltip />
@@ -195,7 +194,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import request from '../api/request';
+import request, { showRequestError } from '../api/request';
 import { Search, Monitor, Edit } from '@element-plus/icons-vue';
 
 const loading = ref(false);
@@ -333,7 +332,7 @@ const saveEdit = async () => {
             throw new Error(res.msg || '操作失败');
         }
     } catch (e) {
-        ElMessage.error('保存失败: ' + e.message);
+        showRequestError(e, '保存失败');
     } finally {
         saveLoading.value = false;
     }

@@ -58,7 +58,7 @@
 import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import request from '../api/request';
+import request, { showRequestError } from '../api/request';
 
 const router = useRouter();
 const formRef = ref(null);
@@ -90,15 +90,14 @@ const handleLogin = async () => {
     });
 
     if (res.success) {
-      // Cookie 由后端写入，前端只需记录登录状态标识
+      // 后端通过 HttpOnly Cookie 鉴权；此标志只用于前端导航，不授予接口权限。
       localStorage.setItem('monitor_logged_in', '1');
       ElMessage.success('登录成功');
       router.replace('/console/dashboard');
     }
   } catch (e) {
     // request.js 已跳过登录接口的全局 401 处理，由此处直接提示错误原因
-    const msg = e?.message || '用户名或密码错误，请重试';
-    ElMessage({ message: msg, type: 'error', duration: 4000 });
+    showRequestError(e, '用户名或密码错误，请重试');
   } finally {
     loading.value = false;
   }

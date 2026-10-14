@@ -88,4 +88,4 @@ backendVersions.forEach(ver => {
 });
 
 console.log('\n✅ SourceMap 设置完成！');
-console.log('现在可以启动后端服务: node server-new.js');
+console.log('人工启动后端的入口为 npm start（index.js）');

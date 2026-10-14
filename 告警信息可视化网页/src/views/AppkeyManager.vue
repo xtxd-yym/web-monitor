@@ -98,7 +98,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Plus } from '@element-plus/icons-vue';
-import request from '../api/request.js';
+import request, { showRequestError } from '../api/request.js';
 
 // ---- 状态 ----
 const loading = ref(false);
@@ -144,7 +144,7 @@ async function fetchData() {
       total.value = res.data.total || 0;
     }
   } catch (error) {
-    ElMessage.error('查询列表失败: ' + error.message);
+    showRequestError(error, '查询列表失败');
   } finally {
     loading.value = false;
   }
@@ -183,7 +183,7 @@ async function submitForm() {
           fetchData();
         }
       } catch (error) {
-        ElMessage.error(error.message || '登记失败');
+        showRequestError(error, '登记失败');
       } finally {
         submitting.value = false;
       }

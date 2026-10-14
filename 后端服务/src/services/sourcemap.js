@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { SourceMapConsumer } = require('source-map');
+const { validateSegment } = require('./sourceMapPath');
 
 class SourceMapService {
     constructor(sourceMapDir) {
@@ -19,6 +20,8 @@ class SourceMapService {
      * @param {string} appkey - 业务组件的唯一标识，用于区分不同客户的构建产物
      */
     async getConsumer(fileName, appkey) {
+        validateSegment(fileName, 'SourceMap 文件名');
+        if (appkey) validateSegment(appkey, 'AppKey');
         const cacheKey = appkey ? `${appkey}/${fileName}` : fileName;
         if (this.consumers.has(cacheKey)) {
             return this.consumers.get(cacheKey);

@@ -6,6 +6,7 @@
 
 const jwt = require('jsonwebtoken');
 const serverConfig = require('../config/server');
+const { parseCookieToken } = require('../services/authCookie');
 
 /**
  * 以下路径豁免鉴权（SDK 调用 / 公开接口）
@@ -26,27 +27,17 @@ function isPublic(req) {
     );
 }
 
-/**
- * 从请求 Cookie 头中解析指定名称的 Token（不依赖 cookie-parser）
- */
-function parseCookieToken(req) {
-    const raw = req.headers.cookie || '';
-    const name = serverConfig.auth.cookieName;
-    const match = raw.split(';').map(s => s.trim()).find(s => s.startsWith(name + '='));
-    return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
-}
-
 module.exports = function authMiddleware(req, res, next) {
     // 公开路径直接放行
     if (isPublic(req)) return next();
 
-    const token = parseCookieToken(req);
+    const token = parseCookieToken(req, serverConfig.auth.cookieName);
     if (!token) {
         return res.status(401).json({ success: false, msg: '未登录，请先登录管理后台' });
     }
 
     try {
-        req.user = jwt.verify(token, serverConfig.auth.jwtSecret);
+        req.user = jwt.verify(token, serverConfig.auth.jwtSecret, { algorithms: ['HS256'] });
         next();
     } catch (e) {
         return res.status(401).json({ success: false, msg: 'Token 已过期，请重新登录' });

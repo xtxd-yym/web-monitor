@@ -1,7 +1,7 @@
 version: '3.8'
 
+# 仅供人工开发联调；生产使用容器平台管理的数据库与 Secret。
 services:
-  # Node.js 后端服务
   monitor-backend:
     build: .
     ports:
@@ -9,33 +9,31 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=development
-      # 数据库连接配置 (默认连接下方的 mysql-db 容器)
       - DB_TYPE=mysql
       - DB_HOST=mysql-db
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=root
+      - DB_PASSWORD=${DB_PASSWORD:?请通过环境变量提供数据库密码}
       - DB_NAME=monitor_system
-      # Vanish 正式环境请改由容器 Secret 注入；本地默认不配置即自动跳过。
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASS=${ADMIN_PASS:?请通过环境变量提供管理员密码}
+      - JWT_SECRET=${JWT_SECRET:?请通过环境变量提供签名密钥}
       - FUYAO_VANISH_ALERT_URL=${FUYAO_VANISH_ALERT_URL:-}
       - VANISH_AK=${VANISH_AK:-}
     depends_on:
       - mysql-db
     volumes:
-      # 挂载源码，支持热重载 (如果不想每次改代码都重启容器，可以在本地用 npm run dev，只用 docker 跑 mysql)
       - ./:/app
       - /app/node_modules
 
-  # MySQL 数据库服务 (本地开发用)
   mysql-db:
     image: mysql:8.0
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请通过环境变量提供数据库密码}
       MYSQL_DATABASE: monitor_system
     ports:
-      - "3306:3306" # 暴露端口，方便本地 DBeaver 连接查看
+      - "3306:3306"
     volumes:
-      # 数据持久化，防止重启丢失
       - ./mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password

@@ -8,3 +8,6 @@ logs
 database/*.db
 tmp
 monitor.db
+.env
+.env.*
+mysql_data

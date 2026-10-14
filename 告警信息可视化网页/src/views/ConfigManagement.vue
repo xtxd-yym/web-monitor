@@ -127,7 +127,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { InfoFilled } from '@element-plus/icons-vue';
-import request from '../api/request';
+import request, { showRequestError } from '../api/request';
 
 const loading = ref(false);
 const submitLoading = ref(false);
@@ -220,7 +220,7 @@ const loadList = async () => {
       configList.value = res.data || [];
     }
   } catch (error) {
-    ElMessage.error('加载配置列表失败');
+    showRequestError(error, '加载配置列表失败');
     console.error(error);
   } finally {
     loading.value = false;
@@ -331,7 +331,7 @@ const submitForm = async () => {
       throw new Error(res.msg || '操作失败');
     }
   } catch (error) {
-    ElMessage.error(error.message || '操作失败');
+    showRequestError(error, '操作失败');
     console.error(error);
   } finally {
     submitLoading.value = false;
@@ -360,7 +360,7 @@ const deleteConfig = async (row) => {
     }
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败');
+      showRequestError(error, '删除失败');
       console.error(error);
     }
   }

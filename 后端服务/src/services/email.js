@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const config = require('../config/server');
+const { escapeHtml } = require('./escapeHtml');
 
 class EmailService {
     constructor() {
@@ -148,27 +149,27 @@ class EmailService {
         </head>
         <body>
             <div class="container">
-                <div class="header level-${data.level || 'L2'}">
+                <div class="header level-${escapeHtml(data.level || 'L2')}">
                     <h2 class="title">监控系统异常告警</h2>
                 </div>
                 <div class="content">
                     <p style="margin-top:0;font-size:16px;">您好，监控系统检测到以下异常：</p>
                     
                     <table class="info-table">
-                        <tr><th>告警概览：</th><td style="color:#e6a23c;">${data.message || '未提供描述'}</td></tr>
-                        <tr><th>告警级别：</th><td>${data.level || 'L2'}</td></tr>
-                        <tr><th>项目名称：</th><td>${data.project || '未知项目'}</td></tr>
-                        <tr><th>运行环境：</th><td>${data.env || '未知环境'}</td></tr>
-                        <tr><th>AppKey：</th><td>${data.appkey || '-'}</td></tr>
-                        <tr><th>客户名称：</th><td>${data.customer_name || '-'}</td></tr>
-                        <tr><th>服务名称：</th><td>${data.service_name || '-'}</td></tr>
+                        <tr><th>告警概览：</th><td style="color:#e6a23c;">${escapeHtml(data.message || '未提供描述')}</td></tr>
+                        <tr><th>告警级别：</th><td>${escapeHtml(data.level || 'L2')}</td></tr>
+                        <tr><th>项目名称：</th><td>${escapeHtml(data.project || '未知项目')}</td></tr>
+                        <tr><th>运行环境：</th><td>${escapeHtml(data.env || '未知环境')}</td></tr>
+                        <tr><th>AppKey：</th><td>${escapeHtml(data.appkey || '-')}</td></tr>
+                        <tr><th>客户名称：</th><td>${escapeHtml(data.customer_name || '-')}</td></tr>
+                        <tr><th>服务名称：</th><td>${escapeHtml(data.service_name || '-')}</td></tr>
                         <tr><th>触发时间：</th><td>${time}</td></tr>
                     </table>
 
                     ${data.error_message || data.error_stack ? `
                     <div class="error-box">
-                        <p class="error-msg">${data.error_message || '未知错误信息'}</p>
-                        ${data.error_stack ? `<pre class="stack">${data.error_stack}</pre>` : ''}
+                        <p class="error-msg">${escapeHtml(data.error_message || '未知错误信息')}</p>
+                        ${data.error_stack ? `<pre class="stack">${escapeHtml(data.error_stack)}</pre>` : ''}
                     </div>
                     ` : ''}
                 </div>

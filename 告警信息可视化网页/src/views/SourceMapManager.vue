@@ -158,7 +158,7 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Upload, Refresh, Delete, Document, SuccessFilled, CircleCloseFilled, Loading } from '@element-plus/icons-vue';
-import request from '../api/request.js';
+import request, { showRequestError } from '../api/request.js';
 
 // ─── 状态 ─────────────────────────────────────────────────
 const selectedAppkey     = ref('');
@@ -253,7 +253,7 @@ async function fetchList() {
     });
     fileList.value = res.data || [];
   } catch (e) {
-    ElMessage.error('获取文件列表失败: ' + e.message);
+    showRequestError(e, '获取文件列表失败');
   } finally {
     loading.value = false;
   }
@@ -301,7 +301,7 @@ async function doUpload() {
       item.status = 'done';
     } catch (e) {
       item.status = 'error';
-      ElMessage.error(`${item.name} 上传失败: ${e.message}`);
+      showRequestError(e, `${item.name} 上传失败`);
     }
   }
 
@@ -324,7 +324,7 @@ async function deleteFile(row) {
     ElMessage.success('删除成功');
     await fetchList();
   } catch (e) {
-    ElMessage.error('删除失败: ' + e.message);
+    showRequestError(e, '删除失败');
   }
 }
 

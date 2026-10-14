@@ -80,3 +80,35 @@ old_backup/
 ppt_resource/
 *.7z
 *.rar
+
+# 文档只同步开发约束与项目 README；业务记录、接入说明、追踪材料留本地
+*.md
+!AGENTS.md
+!README.md
+
+# 演示、周会、客户截图、原始导出与个人临时材料
+/前端演示页面/
+/docs/
+/下周周会_*
+/周会数据_*
+*.jsonl
+*.bundle
+*.patch
+*.bak
+*.ppt
+*.pptx
+*.pdf
+.local/
+monitorWeb/
+coverage/
+*.map
+*.db-wal
+*.db-shm
+mysql_data/
+
+# 公司专用配置和含内部地址的实现：保留本地原样，不进入公开备份
+/后端服务/.npmrc
+/后端服务/Dockerfile
+/告警信息可视化网页/Dockerfile
+/后端服务/src/services/sourcemapOss.js
+/监控sdk源码/src/server/server.js

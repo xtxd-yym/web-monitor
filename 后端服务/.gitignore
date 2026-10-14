@@ -1,6 +1,5 @@
 # 依赖
 node_modules/
-package-lock.json
 
 # 数据库
 database/
@@ -15,6 +14,12 @@ logs/
 # 环境变量
 .env
 .env.local
+.env.*
+!.env.example
+mysql_data/
+sourcemaps/
+public/monitor-sdk/*
+!public/monitor-sdk/README.md
 
 # IDE
 .vscode/

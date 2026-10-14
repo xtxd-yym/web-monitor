@@ -1,6 +1,9 @@
 import { ElMessage } from 'element-plus';
 import router from '../router/index.js';
 import { createHttpClient } from './http-client.js';
+import { createErrorFeedback } from './error-feedback.js';
+
+export const showRequestError = createErrorFeedback(options => ElMessage(options));
 
 function handleRequestError(error) {
     // 401：未登录或 Token 过期
@@ -11,17 +14,13 @@ function handleRequestError(error) {
 
         // 其他接口 401 → 清除登录态，用 Vue Router 软跳转（避免硬刷新导致 404）
         localStorage.removeItem('monitor_logged_in');
-        ElMessage({ message: '登录已过期，请重新登录', type: 'warning', duration: 3000 });
+        showRequestError(error, '登录已过期，请重新登录', 'warning');
         router.push('/login');
         return;
     }
 
     console.error(error);
-    ElMessage({
-        message: error.message,
-        type: 'error',
-        duration: 5 * 1000
-    });
+    showRequestError(error);
 }
 
 const client = createHttpClient({
@@ -34,8 +33,9 @@ const client = createHttpClient({
 function handleBusinessResponse(response) {
     if (response?.success === false) {
         const message = response.msg || 'Error';
-        ElMessage({ message, type: 'error', duration: 5 * 1000 });
-        throw new Error(message);
+        const error = new Error(message);
+        showRequestError(error);
+        throw error;
     }
     return response;
 }

@@ -4,10 +4,13 @@ const serverConfig = require('../config/server');
 
 router.post('/analyze', async (req, res) => {
     try {
-        const { errorInfo } = req.body;
-        if (!errorInfo) {
+        const { errorInfo } = req.body || {};
+        if (!errorInfo || typeof errorInfo !== 'object' || Array.isArray(errorInfo)) {
             return res.status(400).json({ success: false, msg: 'Missing errorInfo' });
         }
+        const breadcrumbs = Array.isArray(errorInfo.breadcrumbs)
+            ? errorInfo.breadcrumbs.filter(item => item && typeof item === 'object')
+            : [];
 
         const apiKey = serverConfig.ai.apiKey;
         const baseUrl = serverConfig.ai.baseUrl;
@@ -35,11 +38,12 @@ router.post('/analyze', async (req, res) => {
 ${errorInfo.parsedData?.original_stack || errorInfo.error_stack || '无'}
 
 【用户行为轨迹 (倒序排列，最新行为在最后)】
-${(errorInfo.breadcrumbs || []).map(b => `- [${new Date(b.event_time).toLocaleString()}] [${b.category}] ${b.breadcrumb_message}`).join('\n') || '未收集到面包屑'}
+${breadcrumbs.map(b => `- [${new Date(b.event_time).toLocaleString()}] [${b.category}] ${b.breadcrumb_message}`).join('\n') || '未收集到面包屑'}
 `;
 
         const response = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
+            signal: AbortSignal.timeout(30000),
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
@@ -55,12 +59,12 @@ ${(errorInfo.breadcrumbs || []).map(b => `- [${new Date(b.event_time).toLocaleSt
         });
 
         if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`AI API Error: ${errText}`);
+            // 上游响应可能包含内部诊断或凭证信息，不回显其原文。
+            throw new Error(`AI upstream status: ${response.status}`);
         }
 
         const data = await response.json();
-        const content = data.choices[0]?.message?.content || '大模型未能返回有效内容。';
+        const content = data?.choices?.[0]?.message?.content || '大模型未能返回有效内容。';
 
         res.json({
             success: true,
@@ -68,11 +72,10 @@ ${(errorInfo.breadcrumbs || []).map(b => `- [${new Date(b.event_time).toLocaleSt
         });
 
     } catch (error) {
-        console.error('AI分析请求失败:', error);
+        console.error('AI分析请求失败:', error.name);
         res.status(500).json({
             success: false,
-            msg: 'AI请求失败',
-            error: error.message
+            msg: 'AI请求失败，请稍后重试'
         });
     }
 });

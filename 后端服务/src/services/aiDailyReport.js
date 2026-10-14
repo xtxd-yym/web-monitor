@@ -4,6 +4,7 @@
  */
 
 const emailService = require('./email');
+const { escapeHtml } = require('./escapeHtml');
 const vanishService = require('./vanish');
 const serverConfig = require('../config/server');
 
@@ -283,7 +284,7 @@ ${topErrorsDesc || '暂无数据'}
                 const color = TYPE_COLORS[type] || '#409eff';
                 return `
                 <tr>
-                    <td style="width:80px;padding:4px 8px 4px 0;font-size:12px;color:#606266;white-space:nowrap;">${type}</td>
+                    <td style="width:80px;padding:4px 8px 4px 0;font-size:12px;color:#606266;white-space:nowrap;">${escapeHtml(type)}</td>
                     <td style="padding:4px 8px;">
                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr>
@@ -302,7 +303,7 @@ ${topErrorsDesc || '暂无数据'}
             return `
             <tr style="border-bottom:1px solid #f0f2f5;">
                 <td style="padding:10px 8px;font-size:13px;color:#909399;text-align:center;width:32px;">${idx + 1}</td>
-                <td style="padding:10px 8px;font-size:13px;color:#303133;">${item.service_name || item.appkey || '未知'}</td>
+                <td style="padding:10px 8px;font-size:13px;color:#303133;">${escapeHtml(item.service_name || item.appkey || '未知')}</td>
                 <td style="padding:10px 8px;">
                     <table width="100%" cellpadding="0" cellspacing="0" border="0">
                         <tr>
@@ -331,8 +332,8 @@ ${topErrorsDesc || '暂无数据'}
             <tr style="border-bottom:1px solid #f0f2f5;">
                 <td style="padding:10px 8px;font-size:13px;color:#909399;text-align:center;width:32px;">${idx + 1}</td>
                 <td style="padding:10px 8px;">
-                    <span style="background:${bg};color:${tc};padding:2px 6px;border-radius:3px;font-size:11px;margin-right:6px;">${err.error_type}</span>
-                    <span style="font-size:13px;color:#303133;">${(err.error_message || err.message || '').slice(0, 60)}${(err.error_message || '').length > 60 ? '...' : ''}</span>
+                    <span style="background:${bg};color:${tc};padding:2px 6px;border-radius:3px;font-size:11px;margin-right:6px;">${escapeHtml(err.error_type)}</span>
+                    <span style="font-size:13px;color:#303133;">${escapeHtml((err.error_message || err.message || '').slice(0, 60))}${(err.error_message || '').length > 60 ? '...' : ''}</span>
                 </td>
                 <td style="padding:10px 8px;text-align:right;white-space:nowrap;">
                     <span style="background:#f0f9ff;color:#409eff;padding:2px 8px;border-radius:10px;font-size:12px;">${err.count}次</span>
@@ -352,7 +353,7 @@ ${topErrorsDesc || '暂无数据'}
             <tr>
                 <td style="padding:6px 0;">
                     <div style="background:${s.bg};border-left:3px solid ${s.border};padding:8px 12px;border-radius:0 4px 4px 0;font-size:13px;color:${s.color};">
-                        ${s.icon}&nbsp;&nbsp;${h.text}
+                        ${s.icon}&nbsp;&nbsp;${escapeHtml(h.text)}
                     </div>
                 </td>
             </tr>`;
@@ -365,10 +366,10 @@ ${topErrorsDesc || '暂无数据'}
                     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #e4e7ed;border-radius:6px;overflow:hidden;">
                         <tr>
                             <td style="padding:12px 16px;">
-                                <div style="font-size:12px;color:#909399;margin-bottom:4px;">组件：${issue.component || '未知'}</div>
-                                <div style="font-size:14px;color:#303133;font-weight:500;margin-bottom:8px;">❗ ${issue.issue}</div>
+                                <div style="font-size:12px;color:#909399;margin-bottom:4px;">组件：${escapeHtml(issue.component || '未知')}</div>
+                                <div style="font-size:14px;color:#303133;font-weight:500;margin-bottom:8px;">❗ ${escapeHtml(issue.issue)}</div>
                                 <div style="font-size:13px;color:#606266;background:#f8f9fa;padding:8px 10px;border-radius:4px;border-left:3px solid #409eff;">
-                                    🔧 ${issue.suggestion}
+                                    🔧 ${escapeHtml(issue.suggestion)}
                                 </div>
                             </td>
                         </tr>
@@ -392,7 +393,7 @@ ${topErrorsDesc || '暂无数据'}
                     <td>
                         <div style="font-size:11px;color:rgba(255,255,255,0.7);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">CLOUD MONITOR · AI DAILY REPORT</div>
                         <div style="font-size:24px;color:#fff;font-weight:700;letter-spacing:-0.5px;">🤖 AI 巡检日报</div>
-                        <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:4px;">${reportDate} · 自动生成</div>
+                        <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:4px;">${escapeHtml(reportDate)} · 自动生成</div>
                     </td>
                     <td align="right" valign="top">
                         <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 16px;text-align:center;">
@@ -404,7 +405,7 @@ ${topErrorsDesc || '暂无数据'}
             </table>
             <!-- AI Headline -->
             <div style="margin-top:20px;background:rgba(255,255,255,0.1);border-radius:8px;padding:12px 16px;font-size:14px;color:#fff;border-left:3px solid #60a5fa;">
-                ${ai.headline || '监控日报已生成，请查阅详情'}
+                ${escapeHtml(ai.headline || '监控日报已生成，请查阅详情')}
             </div>
         </td>
     </tr>
@@ -428,7 +429,7 @@ ${topErrorsDesc || '暂无数据'}
                     </td>
                     <td width="25%" style="padding:0 3px;">
                         <div style="background:#f8f9ff;border-radius:8px;padding:14px;text-align:center;border:1px solid #e8ecff;">
-                            <div style="font-size:11px;font-weight:700;color:#303133;word-break:break-all;">${topTypeLabel}</div>
+                            <div style="font-size:11px;font-weight:700;color:#303133;word-break:break-all;">${escapeHtml(topTypeLabel)}</div>
                             <div style="font-size:11px;color:#909399;margin-top:3px;">最高频类型</div>
                         </div>
                     </td>
@@ -487,7 +488,7 @@ ${topErrorsDesc || '暂无数据'}
 
                 <!-- 整体概况 -->
                 <div style="font-size:13px;color:#303133;line-height:1.8;margin-bottom:14px;padding:12px;background:#fff;border-radius:6px;border-left:3px solid #2563eb;">
-                    ${ai.overview || '暂无概况'}
+                    ${escapeHtml(ai.overview || '暂无概况')}
                 </div>
 
                 ${highlightRows ? `
@@ -507,13 +508,13 @@ ${topErrorsDesc || '暂无数据'}
                 ${ai.trend ? `
                 <!-- 趋势 -->
                 <div style="margin-top:14px;padding:10px 12px;background:#fff;border-radius:6px;font-size:13px;color:#606266;border:1px solid #e4e7ed;">
-                    📈 <strong>趋势分析：</strong>${ai.trend}
+                    📈 <strong>趋势分析：</strong>${escapeHtml(ai.trend)}
                 </div>` : ''}
 
                 ${ai.action ? `
                 <!-- 今日行动 -->
                 <div style="margin-top:12px;padding:10px 12px;background:#fff7ed;border-radius:6px;font-size:13px;color:#b45309;border-left:3px solid #f59e0b;">
-                    🎯 <strong>今日优先处理：</strong>${ai.action}
+                    🎯 <strong>今日优先处理：</strong>${escapeHtml(ai.action)}
                 </div>` : ''}
             </div>
         </td>

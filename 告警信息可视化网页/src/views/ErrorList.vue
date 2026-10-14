@@ -138,7 +138,7 @@
                </div>
             </template>
             <div v-if="aiLoading" v-loading="true" style="height: 60px;"></div>
-            <div v-else class="markdown-body" v-html="parsedAiResponse" style="font-size: 14px; line-height: 1.6; color: #333;"></div>
+            <pre v-else class="ai-response" style="white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; color: #333;">{{ aiResponse }}</pre>
         </el-card>
 
         <el-alert
@@ -186,10 +186,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import request from '../api/request';
-import { marked } from 'marked';
+import request, { showRequestError } from '../api/request';
 
 const form = reactive({
   project: '',
@@ -213,15 +212,6 @@ const currentError = ref(null);
 const aiLoading = ref(false);
 const aiResponse = ref('');
 
-const parsedAiResponse = computed(() => {
-  if (!aiResponse.value) return '';
-  try {
-    return marked.parse(aiResponse.value);
-  } catch (e) {
-    console.error('Markdown parse error:', e);
-    return aiResponse.value;
-  }
-});
 
 const getErrorTypeTag = (type) => {
   const map = {
@@ -329,7 +319,7 @@ const analyzeWithAI = async () => {
     }
   } catch (e) {
     console.error(e);
-    ElMessage.error('AI 请求异常');
+    showRequestError(e, 'AI 请求异常');
   } finally {
     aiLoading.value = false;
   }
@@ -346,7 +336,7 @@ const handleDelete = async (row) => {
     }
   } catch (e) {
     console.error(e);
-    ElMessage.error('删除请求失败');
+    showRequestError(e, '删除请求失败');
   }
 };
 </script>

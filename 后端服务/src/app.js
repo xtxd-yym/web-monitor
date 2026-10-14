@@ -162,8 +162,7 @@ class MonitorServer {
             this.app.use(publicPath, sdkStaticMiddleware);
         });
 
-        // 旧静态文件服务（保持现有行为）
-        this.app.use(express.static(path.join(__dirname, '../../')));
+        // 仅公开上面的 SDK 资源目录，禁止将仓库源码、配置和 SQL 作为静态文件提供。
 
         // 请求日志
         this.app.use((req, res, next) => {

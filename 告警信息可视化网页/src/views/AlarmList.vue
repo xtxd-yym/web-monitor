@@ -100,7 +100,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import request from '../api/request';
+import request, { showRequestError } from '../api/request';
 
 const form = reactive({
   project: '',
@@ -154,7 +154,7 @@ const loadData = async () => {
       total.value = res.result.count;
     }
   } catch (e) {
-    ElMessage.error('加载告警列表失败');
+    showRequestError(e, '加载告警列表失败');
   } finally {
     loading.value = false;
   }
@@ -170,7 +170,7 @@ const handleDelete = async (row) => {
       ElMessage.error(res.msg || '删除失败');
     }
   } catch (e) {
-    ElMessage.error('删除请求失败');
+    showRequestError(e, '删除请求失败');
   }
 };
 

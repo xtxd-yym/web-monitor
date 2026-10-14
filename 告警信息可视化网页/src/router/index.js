@@ -1,4 +1,5 @@
 
+import { h } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 // 懒加载组件
@@ -105,7 +106,7 @@ const routes = [
         component: () => Promise.resolve({
             render() {
                 // 最简兜底视图，直接破坏纯白屏
-                return Vue.h('div', { style: 'color: red; padding: 20px;' },
+                return h('div', { style: 'color: red; padding: 20px;' },
                     `[404 Route Unmatched] Path: ${window.location.pathname}`
                 )
             }
@@ -118,6 +119,8 @@ const router = createRouter({
     routes
 });
 
+// 登录标志只用于页面导航体验，可以被用户修改，不是鉴权或授权边界。
+// 管理接口必须由后端验证 HttpOnly Cookie；request.js 遇到 401 会清理该标志。
 // 全局路由守卫
 router.beforeEach((to, from, next) => {
     const isLoggedIn = !!localStorage.getItem('monitor_logged_in');
