@@ -205,11 +205,14 @@
     function updateErrorLog(error) {
         const errorLog = document.getElementById('errorLog');
         const errorEntry = document.createElement('div');
-        errorEntry.innerHTML = `
-            <strong>[${new Date(error.timestamp).toLocaleTimeString()}] ${error.type}:</strong><br>
-            ${error.message || JSON.stringify(error)}
-            <hr>
-        `;
+        const heading = document.createElement('strong');
+        heading.textContent = `[${new Date(error.timestamp).toLocaleTimeString()}] ${error.type}:`;
+        errorEntry.appendChild(heading);
+        errorEntry.appendChild(document.createElement('br'));
+        const message = document.createElement('span');
+        message.textContent = error.message || JSON.stringify(error);
+        errorEntry.appendChild(message);
+        errorEntry.appendChild(document.createElement('hr'));
         errorLog.appendChild(errorEntry);
         
         // 保持滚动到底部
@@ -236,25 +239,18 @@
         const performanceDiv = document.getElementById('performanceData');
         
         if (performanceData) {
-            performanceDiv.innerHTML = `
-              <strong>性能数据:</strong><br>
-              DNS查询: ${performanceData.dns}ms<br>
-              TCP连接: ${performanceData.tcp}ms<br>
-              TTFB: ${performanceData.ttfb}ms<br>
-              响应时间: ${performanceData.response}ms<br>
-              DOM准备完成: ${performanceData.domReady}ms<br>
-              页面加载完成: ${performanceData.loadComplete}ms
-            `;
+            performanceDiv.style.whiteSpace = 'pre-line';
+            performanceDiv.textContent = `性能数据:\nDNS查询: ${performanceData.dns}ms\nTCP连接: ${performanceData.tcp}ms\nTTFB: ${performanceData.ttfb}ms\n响应时间: ${performanceData.response}ms\nDOM准备完成: ${performanceData.domReady}ms\n页面加载完成: ${performanceData.loadComplete}ms`;
             performanceDiv.style.display = 'block';
         } else {
-            performanceDiv.innerHTML = '性能数据尚未收集完成';
+            performanceDiv.textContent = '性能数据尚未收集完成';
             performanceDiv.style.display = 'block';
         }
     }
     
     // 清空日志
     function clearLogs() {
-        document.getElementById('errorLog').innerHTML = '等待错误发生...';
+        document.getElementById('errorLog').textContent = '等待错误发生...';
         errorCount = 0;
         document.getElementById('errorCount').textContent = '0';
     }
@@ -367,7 +363,7 @@
             appKey: '123',
             customer_name: '演示客户',
             service_name: 'demo-service'  
-          }
+          },
           
           // 自定义错误捕获回调
           onCaptureError: function(error) {
@@ -415,7 +411,7 @@
           monitorReport: async function(params) {
             // 自定义上报函数实现
             try {
-              const response = await fetch('http://localhost:3000/api/report', {
+              const response = await fetch('http://localhost:3001/api/report', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

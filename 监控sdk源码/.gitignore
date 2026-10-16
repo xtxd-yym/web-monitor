@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+src/logs/
+logs/
+*.log
+*.map
+*.bak
+.env
+.env.*
+!.env.example
+*.bundle
+*.zip
+.vscode/
+.idea/
