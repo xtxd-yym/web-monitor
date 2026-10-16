@@ -14,8 +14,8 @@ npm run build 没有实际编译步骤，不能据此宣称镜像构建或业务
 
 所有凭证通过 Secret/环境变量注入，禁止提交 .env、数据库、日志和私钥。
 管理员账号使用 ADMIN_USER；管理员密码 ADMIN_PASS 与 JWT_SECRET 不提供默认值。
-生产缺少 ADMIN_PASS/JWT_SECRET 会拒绝启动；正式服务必须通过 HTTPS 访问，
-生产登录 Cookie 自动使用 HttpOnly、Secure、SameSite=Lax。
+生产缺少 ADMIN_PASS/JWT_SECRET 会拒绝启动。当前管理入口使用 HTTP，COOKIE_SECURE 保持未设置或 false；
+Cookie 保留 HttpOnly、SameSite=Lax，仅在 COOKIE_SECURE=true 时启用 Secure，不受 NODE_ENV 强制覆盖。
 管理 API 在 authMiddleware 后注册；SDK 错误上报、配置读取与探针为预期公开入口。
 畸形 Cookie 按未登录处理，只有约定 SDK 目录作为公开静态资源。
 
@@ -26,9 +26,18 @@ SMTP、Vanish、OSS 和 AI 配置仅由各自环境变量提供，具体字段�
 
 ## SDK 资源
 
-源码与 SDK 资源独立管理；public/monitor-sdk 当前仅包含说明，SDK 构建/发布任务需提供
-monitor-loader.js、sdk-manifest.json 和版本目录下的 monitor.min.js，之后再构建后端镜像。
-这是后续部署配置，不是 Git 导入步骤；详见 public/monitor-sdk/README.md。
+公司镜像直接从 GitLab 构建，因此 public/monitor-sdk 的发布资源必须进入公司 Git：
+monitor-loader.js、sdk-manifest.json 和版本目录下的 monitor.min.js。本次恢复已有发布文件，不重新构建 SDK。
+用户确认当前生产使用 1.2.0，Manifest 仍指向 1.2.0；保留 1.0.1、1.1.0 文件，不覆盖其内容。
+不提交 SourceMap、日志或 Secret。个人 GitHub 继续过滤这些生成产物，不用于生成公司发布镜像。
+详见 public/monitor-sdk/README.md。
+
+## 2026-10-16 两项生产兼容修复
+
+- 恢复原有 COOKIE_SECURE 配置开关，修复 HTTP 管理入口登录后因 Cookie 不发送而立即返回 401。
+- 将已有 Loader、Manifest 和版本 JS 纳入公司交付源码及 Git 跟踪范围，修复重新构建镜像后静态资源缺失。
+- 未改变 SDK 采集核心、SDK 版本、上报/配置接口、SourceMap 校验、AI 请求、数据库或其他逻辑。
+- 本地验证仅限离线 Mock、文件/打包校验和语法检查；公司 MR、镜像构建与生产验收由用户执行。
 
 ## 2026-10-13 门禁预处理
 

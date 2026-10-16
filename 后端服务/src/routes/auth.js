@@ -39,11 +39,11 @@ router.post('/login', (req, res) => {
     );
 
     // 写入 HttpOnly Cookie（前端 JS 无法读取，防止 XSS 窃取）
-    // COOKIE_SECURE=true 仅在 HTTPS 正式环境设置，测试环境（HTTP）保持 false
-    const cookieSecure = process.env.COOKIE_SECURE === 'true' || serverConfig.env === 'production';
+    // 保持原有配置语义：HTTP 环境不启用 Secure，仅显式配置 true 时开启。
+    const cookieSecure = process.env.COOKIE_SECURE === 'true';
     res.cookie(auth.cookieName, token, {
         httpOnly: true,               // JS 不可读
-        secure: cookieSecure,         // 生产环境强制 HTTPS Cookie
+        secure: cookieSecure,         // 不根据 NODE_ENV 强制改变现有访问协议
         sameSite: 'lax',              // 防 CSRF
         maxAge: 24 * 60 * 60 * 1000  // 24 小时
     });

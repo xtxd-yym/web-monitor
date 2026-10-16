@@ -5,7 +5,9 @@
 - 不新增或升级生产依赖，不换包管理器；完整锁文件纳入版本控制，CI 使用 npm ci。
 - 禁止默认管理员密码、固定 JWT 签名密钥、硬编码或输出生产凭证；所有秘密来自环境变量/Secret。
 - 管理接口必须验证 HttpOnly Cookie；公开 SDK 上报/配置和探针使用明确白名单。
+- 当前管理入口仅支持 HTTP；Secure 只由 COOKIE_SECURE=true 显式开启，不得按 NODE_ENV 强制改变访问协议。HttpOnly、SameSite 与 JWT 鉴权保持不变。
 - 禁止公开仓库源码、配置、SQL、数据库或日志目录；仅公开约定的 SDK 静态资源目录。
+- 公司镜像直接从公司 GitLab 构建，public/monitor-sdk 的 Loader、Manifest 与版本 JS 必须进入公司 Git；不要把个人 GitHub 的公开过滤规则复制进来，不提交 SourceMap 或 Secret。版本切换须由用户确认。
 - 外部路径输入要校验；错误、AI 输出和客户文本进入 HTML 时必须转义，不信任原始 HTML。
 - 生产 MySQL 由人工维护，应用不得自动建表、改表或迁移；SQL 文件仅为人工参考。
 - 不在本地启动前后端、不安装运行依赖、不连接正式数据库、不调用真实 SMTP/Vanish 或正式 AI 服务。

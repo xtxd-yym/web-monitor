@@ -18,8 +18,8 @@ logs/
 !.env.example
 mysql_data/
 sourcemaps/
-public/monitor-sdk/*
-!public/monitor-sdk/README.md
+# 公司镜像直接从 Git 构建，SDK 发布资源必须随源码提交；不提交 SourceMap。
+public/monitor-sdk/**/*.map
 
 # IDE
 .vscode/
