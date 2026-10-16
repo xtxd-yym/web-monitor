@@ -116,13 +116,13 @@
     },
     {
       "directory": "监控sdk源码",
-      "reference": "a0bd305753ad16ad035ba3c7e1aa092455229808",
+      "reference": "5ac20c31449e7902c3ffd3ddb4c2fc7cf5c3e2c9",
       "files": {
         ".gitignore": "2d0e577edc5b62b84a1797e5f670472ca2950e250d1dd0a088158ec3cd1dd866",
         "AGENTS.md": "dca86a1f2e9de1d067d37285c9219facc6c84637d53e1ba0a0fe73765667485c",
-        "README.md": "ba8715bb65c16242d3f94df798ab33c7af6bc4332c1f1cd533f5d362b3bf9a77",
+        "README.md": "736bed1a197c43f3b506e5dbcfb01a9437c2152ae26e38859e7b809dc9592e73",
         "doc/project_summary.md": "fc70ed492a3886fc9bf50cd651f3d9eee928f5e5723ed468a3770c74bdfc90f9",
-        "examples/complete-demo.html": "faf66e61c167f6462c69fced984cd1d69dedd6ec0793d806aefe298fa28e05d6",
+        "examples/complete-demo.html": "b8c2a8a9653b458535bd2176f7ac959bcec737b17dd12b7c806308377f899a83",
         "package-lock.json": "9ab19541045d96237d286a0a4d649a553b9d05f9248509592d6152a1ed5c10c7",
         "package.json": "87147ff89331b9f21d4b7c2b5a14e6dec6c9f7a01de6da86fc2e5d0ce874ed1d",
         "scripts/copy-sourcemap.js": "c1a8791510347266870babda0bcc3dd3c878f13764ef0ee81d3133886f918946",

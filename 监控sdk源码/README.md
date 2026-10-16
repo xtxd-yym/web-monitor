@@ -37,6 +37,7 @@ npm run build
 - 保留原 16 条 clean history，在末尾追加门禁预修复，不改历史日期。
 - 补充 AGENTS/README/忽略规则，移除已跟踪的旧备份副本；完整源码仍包含配套 Node 服务。
 - 演示页修复缺失逗号导致的脚本语法错误，错误与性能数据显示改为纯文本，统一回退上报端口。
+- 演示页性能按钮读取已有 onPerformanceData 回调缓存，避免调用 DynamicWebMonitor 未提供的 getPerformanceData 方法；不改变 SDK 公共接口。
 - 演示服务缩小静态暴露范围、限制本机使用、配置写入增加鉴权；日志文件损坏或权限错误不再静默覆盖。
 - npm test 改为复用已有 Node 测试；未新增测试文件，生产依赖范围和已锁定的直接依赖版本不变。
 - 浏览器采集模块、Loader 及上报接口契约未修改。旧 doc/project_summary.md 仅作早期历史参考，以本 README 为当前交付说明。

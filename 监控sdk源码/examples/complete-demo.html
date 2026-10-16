@@ -194,6 +194,7 @@
     <script>
     // 错误计数器
     let errorCount = 0;
+    let latestPerformanceData = null;
     
     // 更新错误计数
     function updateErrorCount() {
@@ -235,7 +236,7 @@
     
     // 显示性能数据
     function showPerformance() {
-        const performanceData = monitor.getPerformanceData();
+        const performanceData = latestPerformanceData;
         const performanceDiv = document.getElementById('performanceData');
         
         if (performanceData) {
@@ -373,6 +374,7 @@
           
           // 自定义性能数据回调
           onPerformanceData: function(data) {
+            latestPerformanceData = data;
             console.log('性能数据:', data);
             // 可以在这里处理性能数据，例如显示在页面上
           },
@@ -428,6 +430,9 @@
           maxErrors: 50,
           enableNetworkMonitoring: true,
           enableUserTracking: true,
+          onPerformanceData: function(data) {
+            latestPerformanceData = data;
+          },
           
           onCaptureError: function(error) {
             updateErrorLog(error);
